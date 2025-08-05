@@ -18,7 +18,6 @@
     Requirements 
 
     - Exchange Online PowerShell module installed
-    - GlobalFunctions PowerShell module installed  
   
     Revision History 
     -------------------------------------------------------------------------------- 
@@ -76,22 +75,6 @@ $StopWatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 $script:ScriptPath = Split-Path $script:MyInvocation.MyCommand.Path
 $script:ScriptName = $MyInvocation.MyCommand.Name
-
-# Load required module for logging
-if ($null -ne (Get-Module -Name GlobalFunctions -ListAvailable).Version) {
-    Import-Module -Name GlobalFunctions
-}
-else {
-    Write-Warning -Message 'Unable to load GlobalFunctions PowerShell module.'
-    Write-Warning -Message 'Open an administrative PowerShell session and run Import-Module GlobalFunctions'
-    Write-Warning -Message 'Please check http://bit.ly/GlobalFunctions for further instructions'
-    exit
-}
-
-# Create a logging oobject
-$logger = New-Logger -ScriptRoot $script:ScriptPath -ScriptName $script:ScriptName -LogFileRetention 14
-$logger.Purge()
-$logger.Write('Script started')
 
 #endregion
 
@@ -342,8 +325,6 @@ $StopWatch.Stop()
 
 # Write script runtime
 Write-Verbose -Message ('It took {0:00}:{1:00}:{2:00} to run the script.' -f $StopWatch.Elapsed.Hours, $StopWatch.Elapsed.Minutes, $StopWatch.Elapsed.Seconds)
-$logger.Write( ('It took {0:00}:{1:00}:{2:00} to run the script.' -f $StopWatch.Elapsed.Hours, $StopWatch.Elapsed.Minutes, $StopWatch.Elapsed.Seconds) )
-$logger.Write('Script finished')
 
 return 0
 
