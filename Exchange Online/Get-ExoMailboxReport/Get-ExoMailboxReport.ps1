@@ -65,7 +65,7 @@ param(
     [ValidateSet('All', 'Top10')]
     [string]$ReportType,
     [int]$MailboxCount = 10,
-    [string]$ConfigFile = 'example.json'
+    [string]$ConfigFile = 'dev-egxde.json'
 )
 
 #region Initialize Script 
@@ -127,37 +127,28 @@ function Process-Mailboxes {
 
     Write-Verbose ('Processing {0} mailbox(es)' -f ($script:Mailboxes | Measure-Object).count)
 
-    $i = 1
+    $i=1
     $totalCount = ($script:Mailboxes | Measure-Object).Count
 
-    $mailboxStatistics = $script:Mailboxes | Get-EXOMailboxStatistics -ErrorAction SilentlyContinue
-    Write-Host ('Found {0} mailboxes with statistics' -f ($mailboxStatistics | Measure-Object).Count)
-    $mailboxArchiveStatistics = $script:Mailboxes | Where-Object{ $_.ArchiveStatus -eq 'Active' } | Get-EXOMailboxStatistics -Archive -ErrorAction SilentlyContinue
-    Write-Host ('Found {0} mailboxes with archive statistics' -f ($mailboxArchiveStatistics | Measure-Object).Count)
-
     foreach ($mailbox in $script:Mailboxes) {
-
-        Write-Progress -Activity ('Processing {0} mailboxes' -f $totalCount) -Status ('Processing {0} ({1}/{2})' -f $mailbox.PrimarySmtpAddress, $i, $totalCount) -PercentComplete (($i / $totalCount) * 100)
+        
+        Write-Progress -Activity "Processing mailboxes" -Status "Processing $($mailbox.PrimarySmtpAddress)" -PercentComplete (($i / $totalCount) * 100)
 
         if ($mailbox.DisplayName -like 'Discovery*') {
             Write-Verbose -Message ('Skipping mailbox {0} as it does not have a valid DisplayName' -f $mailbox.PrimarySmtpAddress)
             continue
         }
 
-        $mailboxStat = $mailboxStatistics | Where-Object { $_.PrimarySmtpAddress -eq $mailbox.PrimarySmtpAddress }
-        $mailboxArchiveStat = $mailboxArchiveStatistics | Where-Object { $_.PrimarySmtpAddress -eq $mailbox.PrimarySmtpAddress }
+        $mailboxStatistics = Get-EXOMailboxStatistics -Identity $mailbox.PrimarySmtpAddress -ErrorAction SilentlyContinue
 
         # Create a custom object with DisplayName and MailboxSite
         $mailboxObject = [PSCustomObject]@{
-            DisplayName              = $mailbox.DisplayName
-            UserPrincipalName        = $mailbox.UserPrincipalName
-            PrimarySmtpAddress       = $mailbox.PrimarySmtpAddress
-            RecipientType            = $mailbox.RecipientType
-            RecipientTypeDetails     = $mailbox.RecipientTypeDetails
-            ProhibitSendReceiveQuota = $mailbox.ProhibitSendReceiveQuota
-            MailboxItemSizeInMB      = $mailboxStat.TotalItemSize.Value.ToMB()
-            MailboxItemSizeInGB      = $mailboxStat.TotalItemSize.Value.ToGB()
-            #ArchiveItemSizeInGB      = if ($mailboxArchiveStat) { $mailboxArchiveStat.TotalItemSize.Value.ToGB() } else { 0 }
+            DisplayName         = $mailbox.DisplayName
+            UserPrincipalName   = $mailbox.UserPrincipalName
+            PrimarySmtpAddress  = $mailbox.PrimarySmtpAddress
+            RecipientType       = $mailbox.RecipientType
+            MailboxItemSizeInMB = $mailboxStatistics.TotalItemSize.Value.ToMB()
+            MailboxItemSizeInGB = $mailboxStatistics.TotalItemSize.Value.ToGB()
         }
 
         # Initialize the array if it doesn't exist
@@ -168,7 +159,6 @@ function Process-Mailboxes {
         # Add the object to the array
         $script:ProcessedMailboxes += $mailboxObject
         
-        $i++
     }
 }
 
@@ -226,33 +216,29 @@ function Create-HtmlReport {
             <th>Display Name</th>
             <th>User Principal Name</th>
             <th>Primary SMTP Address</th>
-            <th>Recipient Type Details</th>
+            <th>Recipient Type</th>
             <th style="text-align: right;">Mailbox Size (MB)</th>
             <th style="text-align: right;">Mailbox Size (GB)</th>
-            <th style="text-align: right;">Archive Size (GB)</th>
-            <th>Prohibit Send/Receive Quota</th>
         </tr>
 "@
 
     $index = 1
-    foreach ($mailbox in $sortedMailboxes) {
-        $htmlContent += @"
+    foreach ($mailbox in $sortedMailboxes)    {
+    $htmlContent += @"
     <tr>
         <td>$index</td>
         <td>$($mailbox.DisplayName)</td>
         <td>$($mailbox.UserPrincipalName)</td>
         <td>$($mailbox.PrimarySmtpAddress)</td>
-        <td>$($mailbox.RecipientTypeDetails)</td>
+        <td>$($mailbox.RecipientType)</td>
         <td style="text-align: right;">$($mailbox.MailboxItemSizeInMB)</td>
         <td style="text-align: right;">$($mailbox.MailboxItemSizeInGB)</td>
-        <td style="text-align: right;">$($mailbox.ArchiveItemSizeInGB)</td>
-        <td>$($mailbox.ProhibitSendReceiveQuota)</td>
     </tr>
 "@
-        $index++
+    $index++
     }
 
-    # Close the HTML table
+        # Close the HTML table
     $htmlContent += @"
     </table>
     <p>Total Mailboxes Processed: $($sortedMailboxes.Count)</p>
@@ -291,23 +277,23 @@ $mailboxes = $null
 
 switch ($MailboxType) {
     'All' {
-        $script:Mailboxes = Get-EXOMailbox -ResultSize Unlimited -Properties prohibitsendreceivequota
+        $script:Mailboxes = Get-EXOMailbox -ResultSize Unlimited
         Process-Mailboxes
     }
     'User' {
-        $script:Mailboxes = Get-EXOMailbox -ResultSize Unlimited -RecipientTypeDetails UserMailbox -Properties prohibitsendreceivequota
+        $script:Mailboxes = Get-EXOMailbox -ResultSize Unlimited -RecipientTypeDetails UserMailbox
         Process-Mailboxes
     }
     'Shared' {
-        $script:Mailboxes = Get-EXOMailbox -ResultSize Unlimited -RecipientTypeDetails SharedMailbox -Properties prohibitsendreceivequota   
+        $script:Mailboxes = Get-EXOMailbox -ResultSize Unlimited -RecipientTypeDetails SharedMailbox
         Process-Mailboxes
     }
     'Room' {
-        $script:Mailboxes = Get-EXOMailbox -ResultSize Unlimited -RecipientTypeDetails RoomMailbox -Properties prohibitsendreceivequota
+        $script:Mailboxes = Get-EXOMailbox -ResultSize Unlimited -RecipientTypeDetails RoomMailbox
         Process-Mailboxes
     }
     'Test' {
-        $script:Mailboxes = Get-EXOMailbox -ResultSize $MailboxCount -Properties prohibitsendreceivequota
+        $script:Mailboxes = Get-EXOMailbox -ResultSize $MailboxCount
         Process-Mailboxes
     }
 }
