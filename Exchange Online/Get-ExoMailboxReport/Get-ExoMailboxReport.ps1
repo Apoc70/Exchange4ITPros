@@ -1,47 +1,54 @@
 <#
-.SYNOPSIS
-    Retrieves mailbox statistics from Exchange Online and generates a comprehensive HTML report.
+    .SYNOPSIS
 
-.DESCRIPTION
-    This PowerShell script connects to Exchange Online and gathers detailed statistics for all mailboxes within the tenant. It collects information such as mailbox size, item count, last logon time, and other relevant attributes. The script then compiles the data into a structured HTML report, making it easy for administrators to review mailbox usage, identify inactive accounts, and monitor storage consumption. The report is suitable for auditing, capacity planning, and general Exchange Online management tasks. The script is designed to be run with appropriate permissions and may require the Exchange Online PowerShell module to be installed and imported prior to execution.
+    This script retrieves mailbox statistics from Exchange Online and generates a report in HTML format.
+   
+    .DESCRIPTION
 
-
+    The script connects to Exchange Online, retrieves mailbox statistics based on the specified mailbox type, and generates an HTML report showing mailbox sizes and other details. It supports different mailbox types (User, Shared, Room) and report types (All, Top10, Top20, Below10Percent, Below20Percent).
+    
     THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE RISK
     OF THE USE OR THE RESULTS FROM THE USE OF THIS CODE REMAINS WITH THE USER.
 
-.NOTES 
+    .NOTES 
+
     Requirements 
 
     - Exchange Online PowerShell module installed
-    - Entra app, with appropriate API permissions granted when using app authentication
-
+  
     Revision History 
     -------------------------------------------------------------------------------- 
     1.0 Initial community release 
 
-.LINK
-    https://exchangeforitpros.blog/
+    .LINK
 
-.PARAMETER UseAppAuthentication
+    https://github.com/Apoc70/Exchange4ITPros
+
+    .PARAMETER UseAppAuthentication
+
     Use App Authentication to connect to Exchange Online. If not specified, the script assumes you run the script in an active Exchange Online Management Shell
 
-.PARAMETER MailboxType
+    .PARAMETER MailboxType
+
     Specify the type of mailbox to report on. Valid values are 'User', 'Shared', and 'Room'. Default is 'All'.
 
-.PARAMETER ReportType
-    Specify the type of report to generate. Valid values are 'All', 'Top10', and 'Below10Percent'. Default is 'All'.
+    .PARAMETER ReportType
 
-.PARAMETER MailboxCount
+    Specify the type of report to generate. Valid values are 'All' and 'Top10'. Default is 'All'.
+
+    .PARAMETER MailboxCount
+
     Specify the number of mailboxes to process when MailboxType is set to 'Test'. Default is 10.    
 
-.PARAMETER ConfigFile
-    Specify the configuration file to use when using App Authentication. Default is 'example.json'. This file should contain tenant ID, organization, client ID, and certificate thumbprint.
+    .PARAMETER ConfigFile
 
-.EXAMPLE
+    Specify the configuration file to use. Default is 'dev-egxde.json'. This file should contain tenant ID, organization, client ID, and certificate thumbprint.
+   
+    .EXAMPLE
 
-Get-ExoMailboxReport.ps1 -UseAppAuthentication -MailboxType 'All' -ReportType 'Top10' -ConfigFile 'varunagroup.json'
-
-This command retrieves mailbox statistics for all mailboxes and generates a report showing the top 10 mailboxes by size, using app authentication.
+    Get-ExoMailboxReport.ps1 -UseAppAuthentication -MailboxType 'All' -ReportType 'Top10' -ConfigFile 'varunagroup.json'
+    
+    This command retrieves mailbox statistics for all mailboxes and generates a report showing the top 10 mailboxes by size, using app authentication.
 
 #>
 
@@ -52,7 +59,7 @@ param(
     [switch]$UseAppAuthentication,
     [ValidateSet('All', 'Test', 'User', 'Shared', 'Room')]
     [string]$MailboxType,
-    [ValidateSet('All', 'Top10', 'Below10Percent')]
+    [ValidateSet('All', 'Top10','Top20','Below10Percent','Below20Percent')]
     [string]$ReportType,
     [int]$MailboxCount = 10,
     [string]$ConfigFile = 'example.json'
@@ -72,7 +79,6 @@ $script:ScriptName = $MyInvocation.MyCommand.Name
 
 function LoadScriptSettings {
 
-    # Load configuration settings from JSON file
     $configFilePath = Join-Path -Path $script:ScriptPath -ChildPath $ConfigFile
 
     if (Test-Path -Path $configFilePath) {
@@ -121,7 +127,13 @@ function Process-Mailboxes {
     $i = 1
     $totalCount = ($script:Mailboxes | Measure-Object).Count
 
-    # Process each mailbox
+<#
+    $mailboxStatistics = $script:Mailboxes | Get-EXOMailboxStatistics -Properties MailboxGuid -ErrorAction SilentlyContinue
+    Write-Host ('Found {0} mailboxes with statistics' -f ($mailboxStatistics | Measure-Object).Count)
+
+    $mailboxArchiveStatistics = $script:Mailboxes | Where-Object{ $_.ArchiveStatus -eq 'Active' } | Get-EXOMailboxStatistics -Properties MailboxGuid -Archive -ErrorAction SilentlyContinue
+    Write-Host ('Found {0} mailboxes with archive statistics' -f ($mailboxArchiveStatistics | Measure-Object).Count)
+#>
     foreach ($mailbox in $script:Mailboxes) {
 
         Write-Progress -Activity ('Processing {0} mailboxes' -f $totalCount) -Status ('Processing {0} ({1}/{2})' -f $mailbox.PrimarySmtpAddress, $i, $totalCount) -PercentComplete (($i / $totalCount) * 100)
@@ -133,11 +145,10 @@ function Process-Mailboxes {
 
         $mailboxStat = $mailbox | Get-EXOMailboxStatistics
         # $mailboxArchiveStat = $mailbox | Get-EXOMailboxStatistics -Archive -ErrorAction SilentlyContinue
-        # for an upcoming release
 
-        $maxQuotaInMB = [int]([regex]::Match($mailbox.ProhibitSendReceiveQuota, '^([\d\.,]+)\s*GB').Groups[1].Value -replace ',', '.') * 1024
+        $maxQuotaInMB = [int]([regex]::Match($mailbox.ProhibitSendReceiveQuota, '^([\d\.,]+)\s*GB').Groups[1].Value -replace ',', '.')*1024
 
-        $mailItemSizeInPercent = ( [math]::Round( ($mailboxStat.TotalItemSize.Value.ToMB() / $maxQuotaInMB ) * 100, 2 ) ) 
+        $mailItemSizeInPercent = ( [math]::Round( ($mailboxStat.TotalItemSize.Value.ToMB()/$maxQuotaInMB )*100, 2 ) ) 
 
         # Create a custom object with DisplayName and MailboxSite
         $mailboxObject = [PSCustomObject]@{
@@ -150,8 +161,8 @@ function Process-Mailboxes {
             MailboxItemSizeInMB      = $mailboxStat.TotalItemSize.Value.ToMB()
             MailboxItemSizeInGB      = $mailboxStat.TotalItemSize.Value.ToGB()
             MailboxItemSizeInPercent = $mailItemSizeInPercent
-            FreeSizeInPercent        = 100 - $mailItemSizeInPercent
-            # ArchiveItemSizeInGB      = if ($mailboxArchiveStat) { $mailboxArchiveStat.TotalItemSize.Value.ToGB() } else { 0 }
+            FreeSizeInPercent        = 100-$mailItemSizeInPercent
+           # ArchiveItemSizeInGB      = if ($mailboxArchiveStat) { $mailboxArchiveStat.TotalItemSize.Value.ToGB() } else { 0 }
         }
 
         # Initialize the array if it doesn't exist
@@ -224,7 +235,9 @@ function Create-HtmlReport {
             <th>Recipient Type Details</th>
             <th style="text-align: right;">Mailbox Size (MB)</th>
             <th style="text-align: right;">Mailbox Size (GB)</th>
+            
             <th>Percent</th>
+            
             <th>Prohibit Send/Receive Quota</th>
         </tr>
 "@
@@ -240,7 +253,9 @@ function Create-HtmlReport {
         <td>$($mailbox.RecipientTypeDetails)</td>
         <td style="text-align: right;">$($mailbox.MailboxItemSizeInMB)</td>
         <td style="text-align: right;">$($mailbox.MailboxItemSizeInGB)</td>
-        <td style="text-align: right;">$('{0:N2}' -f $mailbox.MailboxItemSizeInPercent)</td>
+        
+       <td style="text-align: right;">$('{0:N2}' -f $mailbox.MailboxItemSizeInPercent)</td> 
+       
         <td>$($mailbox.ProhibitSendReceiveQuota)</td>
     </tr>
 "@
@@ -276,14 +291,13 @@ if ($UseAppAuthentication) {
 
         Write-Verbose -Message ('Connecting to Exchange Online with AppId {0} and CertificateThumbprint {1}' -f $clientid, $certThumbprint)
 
-        Connect-ExchangeOnline -AppId $clientid -CertificateThumbprint $certThumbprint -Organization $organization -ErrorAction Stop -ShowBanner:$false -Verbose:$false
+        Connect-ExchangeOnline -AppId $clientid -CertificateThumbprint $certThumbprint -Organization $Organization -ErrorAction Stop -ShowBanner:$false -Verbose:$false
         
         Write-Host "ExO module loaded successfully!"
     }
 }
 
 $mailboxes = $null
-
 
 switch ($MailboxType) {
     'All' {
@@ -319,17 +333,29 @@ switch ($ReportType) {
         $script:ProcessedMailboxes = $script:ProcessedMailboxes | Sort-Object -Property MailboxItemSizeInMB -Descending | Select-Object -First 10
         $subTitle = ('Top 10 Mailboxes by Size (Filter: {0})' -f $MailboxType) 
     }
+   'Top20' {
+        Write-Verbose -Message 'Generating report for top 20 mailboxes'
+        $script:ProcessedMailboxes = $script:ProcessedMailboxes | Sort-Object -Property MailboxItemSizeInMB -Descending | Select-Object -First 20
+        Write-Host ('Processed: {0}' -f ($script:ProcessedMailboxes | Measure-Object).Count )
+        $subTitle = ('Top 20 Mailboxes by Size (Filter: {0})' -f $MailboxType) 
+    }
     'Below10Percent' {
         Write-Verbose -Message 'Generating report for mailboxes below 10 percent free space'
-        $script:ProcessedMailboxes = $script:ProcessedMailboxes | ? { $_.FreeSizeInPercent -le 10 } | Sort-Object -Property MailboxItemSizeInMB -Descending 
+        $script:ProcessedMailboxes = $script:ProcessedMailboxes | Where-Object{$_.FreeSizeInPercent -le 10} | Sort-Object -Property MailboxItemSizeInMB -Descending 
         $subTitle = ('All Mailboxes below 10% free space (Filter: {0})' -f $MailboxType)
     }
+    'Below20Percent' {
+        Write-Verbose -Message 'Generating report for mailboxes below 20 percent free space'
+        $script:ProcessedMailboxes = $script:ProcessedMailboxes | Where-Object{$_.FreeSizeInPercent -le 20} | Sort-Object -Property MailboxItemSizeInMB -Descending 
+        $subTitle = ('All Mailboxes below 20% free space (Filter: {0})' -f $MailboxType)
+    }
+
 }
 
 # 2. Create HTML report
 Write-Verbose -Message 'Creating HTML report...'
 
-Create-HtmlReport -OutputFile ('{0}\MailboxReport_{1:yyyyMMdd_HHmmss}_{3}_{2}.html' -f $script:ScriptPath, (Get-Date), $ReportType, $MailboxType ) -SubReportTitle $subTitle
+Create-HtmlReport -OutputFile ('{0}\MailboxReport_{1:yyyyMMdd_HHmmss}_{3}_{2}.html' -f $script:ScriptPath, (Get-Date), $ReportType, $MailboxType ) -SubReportTitle $subTitle -MaxMailboxCount 0
 
 #endregion
 
