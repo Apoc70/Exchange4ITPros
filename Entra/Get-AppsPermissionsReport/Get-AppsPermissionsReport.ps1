@@ -1,14 +1,15 @@
 <#
 .SYNOPSIS
-    Generates a permissions report for all Entra ID (Azure AD) app registrations.
+    Generates a permissions report for Entra ID app registrations and/or enterprise apps.
 
 .DESCRIPTION
     Fetches application permissions (AppRoles) and delegated permissions (OAuth2PermissionScopes)
-    for all app registrations in the tenant. Permissions can be filtered using predefined sets
+    for app registrations and enterprise apps in the tenant. Permissions can be filtered using predefined sets
     ("Exchange", "SharePoint") or custom permission strings.
     Generates an HTML report and a CSV report stored in a "Reports" subfolder.
     Apps containing EWS (Exchange Web Services) permissions are flagged in a configurable color.
     Delivery options: local filesystem, email, or Microsoft Teams channel webhook.
+    Current version: 2.1.0.
 
 .PARAMETER PredefinedSets
     Specify predefined permission sets to include: "Exchange", "SharePoint", or both.
@@ -62,6 +63,13 @@
     Select permission highlight categories for the HTML report.
     Supports any combination of: HighPrivilege, Exchange, SharePoint.
 
+.PARAMETER ReportVariant
+    Select report source objects: AppRegistrations, EnterpriseApps, or Both.
+
+.PARAMETER IncludeFirstPartyApps
+    When reporting enterprise apps, include first-party Microsoft apps.
+    By default, enterprise app reporting includes third-party apps only.
+
 .PARAMETER OpenHtmlReport
     Opens the generated HTML report in the default browser after script completion.
 
@@ -85,6 +93,7 @@
     .\Get-AppsPermissionsReport.ps1 -HighlightCategories HighPrivilege,Exchange,SharePoint
 
 .NOTES
+    Version : 2.1.0
     Requires: Microsoft.Graph PowerShell SDK (modules: Microsoft.Graph.Applications, Microsoft.Graph.Identity.DirectoryManagement)
     Install : Install-Module Microsoft.Graph -Scope CurrentUser
 #>
@@ -123,8 +132,16 @@ param (
     [ValidateSet("HighPrivilege", "Exchange", "SharePoint")]
     [string[]]$HighlightCategories = @("HighPrivilege"),
 
+    [ValidateSet("AppRegistrations", "EnterpriseApps", "Both")]
+    [string]$ReportVariant = "EnterpriseApps",
+
+    [switch]$IncludeFirstPartyApps,
+
     [switch]$OpenHtmlReport
 )
+
+$ScriptVersion = "2.1.0"
+$scriptTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
 #region --- Permission Definitions ---
 
@@ -225,7 +242,7 @@ try {
     switch ($AuthMode) {
         "Interactive" {
             $connectParams = @{
-                Scopes      = @("Application.Read.All", "Directory.Read.All")
+                Scopes      = @("Application.Read.All", "Directory.Read.All", "AppRoleAssignment.ReadWrite.All", "DelegatedPermissionGrant.Read.All")
                 NoWelcome   = $true
                 ErrorAction = 'Stop'
             }
@@ -290,28 +307,66 @@ catch {
 Write-Host "Fetching tenant information..." -ForegroundColor Cyan
 try {
     $tenantDetails = Get-MgOrganization -ErrorAction Stop | Select-Object -First 1
-    $tenantName    = ($tenantDetails.VerifiedDomains | Where-Object { $_.IsDefault } | Select-Object -First 1).Name
-    if (-not $tenantName) { $tenantName = $tenantDetails.DisplayName }
-    $tenantName    = $tenantName -replace '[\\/:*?"<>|]', '_'
+    $tenantDisplayName = [string]$tenantDetails.DisplayName
+    if ([string]::IsNullOrWhiteSpace($tenantDisplayName)) { $tenantDisplayName = "UnknownTenant" }
+
+    $tenantDomain = ($tenantDetails.VerifiedDomains | Where-Object { $_.IsDefault } | Select-Object -First 1).Name
+    if (-not $tenantDomain) {
+        $tenantDomain = ($tenantDetails.VerifiedDomains | Select-Object -First 1).Name
+    }
+
+    if ([string]::IsNullOrWhiteSpace($tenantDomain)) {
+        $tenantDisplayLabel = $tenantDisplayName
+    }
+    else {
+        $tenantDisplayLabel = "$tenantDisplayName ($tenantDomain)"
+    }
 }
 catch {
-    Write-Warning "Could not retrieve tenant name. Using 'UnknownTenant'."
-    $tenantName = "UnknownTenant"
+    Write-Warning "Could not retrieve tenant details. Using 'UnknownTenant'."
+    $tenantDisplayName = "UnknownTenant"
+    $tenantDomain = ""
+    $tenantDisplayLabel = $tenantDisplayName
 }
-Write-Host "Tenant: $tenantName" -ForegroundColor Green
+Write-Host "Tenant: $tenantDisplayLabel" -ForegroundColor Green
+
+function ConvertTo-SafeFileNameSegment {
+    param(
+        [string]$Value,
+        [string]$Fallback = "UnknownTenant"
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $Fallback
+    }
+
+    $safeValue = $Value -replace '[<>:"/\\|?*\x00-\x1F]', '_'
+    $safeValue = $safeValue -replace '\s+', '_'
+    $safeValue = $safeValue.Trim(' ', '.', '_')
+
+    if ([string]::IsNullOrWhiteSpace($safeValue)) {
+        return $Fallback
+    }
+
+    return $safeValue
+}
 
 #endregion
 
 #region --- Fetch Service Principals (resource apps) for permission name resolution ---
 
 Write-Host "Fetching service principals for permission name resolution..." -ForegroundColor Cyan
-$allServicePrincipals = Get-MgServicePrincipal -All -Property "AppId,DisplayName,AppRoles,Oauth2PermissionScopes" -ErrorAction SilentlyContinue
+$allServicePrincipals = Get-MgServicePrincipal -All -Property "Id,AppId,DisplayName,AppRoles,Oauth2PermissionScopes,ServicePrincipalType,PublisherName,AppOwnerOrganizationId" -ErrorAction SilentlyContinue
 
 # Build lookup: AppId -> ServicePrincipal
 $spLookup = @{}
+$spIdLookup = @{}
 foreach ($sp in $allServicePrincipals) {
     if (-not $spLookup.ContainsKey($sp.AppId)) {
         $spLookup[$sp.AppId] = $sp
+    }
+    if (-not $spIdLookup.ContainsKey($sp.Id)) {
+        $spIdLookup[$sp.Id] = $sp
     }
 }
 
@@ -341,13 +396,36 @@ function Resolve-ResourceName {
     return $ResourceAppId
 }
 
-#endregion
+function Resolve-ResourceNameById {
+    param([string]$ResourceId)
+    $sp = $spIdLookup[$ResourceId]
+    if ($sp) { return $sp.DisplayName }
+    return $ResourceId
+}
 
-#region --- Fetch App Registrations ---
+function Resolve-AppRoleNameByResourceId {
+    param(
+        [string]$ResourceId,
+        [string]$AppRoleId
+    )
+    $sp = $spIdLookup[$ResourceId]
+    if (-not $sp) { return $AppRoleId }
+    $match = $sp.AppRoles | Where-Object { $_.Id -eq $AppRoleId } | Select-Object -First 1
+    if ($match -and $match.Value) { return $match.Value }
+    return $AppRoleId
+}
 
-Write-Host "Fetching app registrations..." -ForegroundColor Cyan
-$apps = Get-MgApplication -All -Property "Id,AppId,DisplayName,RequiredResourceAccess,SignInAudience,CreatedDateTime" -ErrorAction Stop
-Write-Host "Found $($apps.Count) app registrations." -ForegroundColor Green
+function Test-IsFirstPartyEnterpriseApp {
+    param($ServicePrincipal)
+    $microsoftTenantId = "72f988bf-86f1-41af-91ab-2d7cd011db47"
+    $ownerOrgId = [string]$ServicePrincipal.AppOwnerOrganizationId
+    $publisherName = [string]$ServicePrincipal.PublisherName
+
+    if ($ownerOrgId -and $ownerOrgId -eq $microsoftTenantId) { return $true }
+    if ($publisherName -match "(?i)^microsoft") { return $true }
+
+    return $false
+}
 
 #endregion
 
@@ -363,27 +441,120 @@ Write-Host "Permission filter active: $useFilter$(if ($useFilter) { " ($($permis
 
 Write-Host "Processing app permissions..." -ForegroundColor Cyan
 
+$includeAppRegistrations = $ReportVariant -in @("AppRegistrations", "Both")
+$includeEnterpriseApps   = $ReportVariant -in @("EnterpriseApps", "Both")
+$showAppSourceColumn     = $ReportVariant -eq "Both"
+
+$reportVariantLabel = switch ($ReportVariant) {
+    "AppRegistrations" { "App Registrations" }
+    "EnterpriseApps" {
+        if ($IncludeFirstPartyApps) { "Enterprise Apps (All)" }
+        else { "Enterprise Apps (Third-Party Only)" }
+    }
+    "Both" {
+        if ($IncludeFirstPartyApps) { "App Registrations + Enterprise Apps (All)" }
+        else { "App Registrations + Enterprise Apps (Third-Party Only)" }
+    }
+}
+
 $reportData = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-foreach ($app in ($apps | Sort-Object DisplayName)) {
+if ($includeAppRegistrations) {
+    Write-Host "Fetching app registrations..." -ForegroundColor Cyan
+    $apps = Get-MgApplication -All -Property "Id,AppId,DisplayName,RequiredResourceAccess,SignInAudience,CreatedDateTime" -ErrorAction Stop
+    Write-Host "Found $($apps.Count) app registrations." -ForegroundColor Green
 
-    $appPermissions = [System.Collections.Generic.List[PSCustomObject]]::new()
-    $hasEws         = $false
+    $sortedApps = @($apps | Sort-Object DisplayName)
+    $totalApps = $sortedApps.Count
+    $currentAppIndex = 0
 
-    foreach ($resourceAccess in $app.RequiredResourceAccess) {
-        $resourceName = Resolve-ResourceName -ResourceAppId $resourceAccess.ResourceAppId
+    foreach ($app in $sortedApps) {
+        $currentAppIndex++
+        $percentComplete = if ($totalApps -gt 0) { [int](($currentAppIndex / $totalApps) * 100) } else { 100 }
+        Write-Progress -Id 1 -Activity "Analyzing app registrations" -Status "[$currentAppIndex/$totalApps] $($app.DisplayName)" -PercentComplete $percentComplete
 
-        foreach ($access in $resourceAccess.ResourceAccess) {
-            $permType = switch ($access.Type) {
-                "Role"  { "Application" }
-                "Scope" { "Delegated" }
-                default { $access.Type }
+        $appPermissions = [System.Collections.Generic.List[PSCustomObject]]::new()
+        $hasEws         = $false
+
+        foreach ($resourceAccess in $app.RequiredResourceAccess) {
+            $resourceName = Resolve-ResourceName -ResourceAppId $resourceAccess.ResourceAppId
+
+            foreach ($access in $resourceAccess.ResourceAccess) {
+                $permType = switch ($access.Type) {
+                    "Role"  { "Application" }
+                    "Scope" { "Delegated" }
+                    default { $access.Type }
+                }
+                $resolvedName = Resolve-PermissionName -ResourceAppId $resourceAccess.ResourceAppId `
+                                                        -PermissionId $access.Id `
+                                                        -Type $access.Type
+
+                if ($useFilter -and -not $permissionFilter.Contains($resolvedName)) { continue }
+
+                if ($EwsPermissions -contains $resolvedName) { $hasEws = $true }
+                $isHighPrivilege = $HighPrivilegePermissionSet.Contains($resolvedName)
+                $isExchangePermission = $ExchangePermissionSet.Contains($resolvedName)
+                $isSharePointPermission = $SharePointPermissionSet.Contains($resolvedName)
+
+                $appPermissions.Add([PSCustomObject]@{
+                    AppName                = $app.DisplayName
+                    AppId                  = $app.AppId
+                    AppSource              = "App Registration"
+                    ResourceName           = $resourceName
+                    Permission             = $resolvedName
+                    PermissionType         = $permType
+                    IsHighPrivilege        = $isHighPrivilege
+                    IsExchangePermission   = $isExchangePermission
+                    IsSharePointPermission = $isSharePointPermission
+                    HasEWS                 = $false
+                })
             }
-            $resolvedName = Resolve-PermissionName -ResourceAppId $resourceAccess.ResourceAppId `
-                                                    -PermissionId $access.Id `
-                                                    -Type $access.Type
+        }
 
-            # Apply filter
+        if ($useFilter -and $appPermissions.Count -eq 0) { continue }
+        foreach ($row in $appPermissions) { $row.HasEWS = $hasEws }
+        $reportData.AddRange($appPermissions)
+    }
+
+    Write-Progress -Id 1 -Activity "Analyzing app registrations" -Completed
+}
+
+if ($includeEnterpriseApps) {
+    Write-Host "Fetching enterprise apps..." -ForegroundColor Cyan
+    $enterpriseApps = $allServicePrincipals |
+        Where-Object { $_.ServicePrincipalType -eq "Application" -and -not [string]::IsNullOrWhiteSpace($_.DisplayName) }
+
+    if (-not $IncludeFirstPartyApps) {
+        $enterpriseApps = $enterpriseApps | Where-Object { -not (Test-IsFirstPartyEnterpriseApp -ServicePrincipal $_) }
+        Write-Host "Default filter active: third-party enterprise apps only." -ForegroundColor Yellow
+    }
+
+    Write-Host "Enterprise apps in scope: $($enterpriseApps.Count)" -ForegroundColor Green
+
+    $sortedEnterpriseApps = @($enterpriseApps | Sort-Object DisplayName)
+    $totalEnterpriseApps = $sortedEnterpriseApps.Count
+    $currentEnterpriseAppIndex = 0
+
+    foreach ($sp in $sortedEnterpriseApps) {
+        $currentEnterpriseAppIndex++
+        $percentComplete = if ($totalEnterpriseApps -gt 0) { [int](($currentEnterpriseAppIndex / $totalEnterpriseApps) * 100) } else { 100 }
+        Write-Progress -Id 2 -Activity "Analyzing enterprise apps" -Status "[$currentEnterpriseAppIndex/$totalEnterpriseApps] $($sp.DisplayName)" -PercentComplete $percentComplete
+
+        $appPermissions = [System.Collections.Generic.List[PSCustomObject]]::new()
+        $hasEws         = $false
+
+        $appRoleAssignments = @()
+        try {
+            $appRoleAssignments = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -All -Property "ResourceId,AppRoleId" -ErrorAction Stop
+        }
+        catch {
+            Write-Warning "Could not read app role assignments for enterprise app '$($sp.DisplayName)': $_"
+        }
+
+        foreach ($assignment in $appRoleAssignments) {
+            $resourceName = Resolve-ResourceNameById -ResourceId $assignment.ResourceId
+            $resolvedName = Resolve-AppRoleNameByResourceId -ResourceId $assignment.ResourceId -AppRoleId $assignment.AppRoleId
+
             if ($useFilter -and -not $permissionFilter.Contains($resolvedName)) { continue }
 
             if ($EwsPermissions -contains $resolvedName) { $hasEws = $true }
@@ -392,26 +563,61 @@ foreach ($app in ($apps | Sort-Object DisplayName)) {
             $isSharePointPermission = $SharePointPermissionSet.Contains($resolvedName)
 
             $appPermissions.Add([PSCustomObject]@{
-                AppName        = $app.DisplayName
-                AppId          = $app.AppId
-                ResourceName   = $resourceName
-                Permission     = $resolvedName
-                PermissionType = $permType
-                IsHighPrivilege = $isHighPrivilege
-                IsExchangePermission = $isExchangePermission
+                AppName                = $sp.DisplayName
+                AppId                  = $sp.AppId
+                AppSource              = "Enterprise App"
+                ResourceName           = $resourceName
+                Permission             = $resolvedName
+                PermissionType         = "Application"
+                IsHighPrivilege        = $isHighPrivilege
+                IsExchangePermission   = $isExchangePermission
                 IsSharePointPermission = $isSharePointPermission
-                HasEWS         = $false  # set per-app below
+                HasEWS                 = $false
             })
         }
+
+        $oauthGrants = @()
+        try {
+            $oauthGrants = Get-MgOauth2PermissionGrant -Filter "clientId eq '$($sp.Id)'" -All -Property "ResourceId,Scope" -ErrorAction Stop
+        }
+        catch {
+            Write-Warning "Could not read delegated grants for enterprise app '$($sp.DisplayName)': $_"
+        }
+
+        foreach ($grant in $oauthGrants) {
+            if ([string]::IsNullOrWhiteSpace($grant.Scope)) { continue }
+            $resourceName = Resolve-ResourceNameById -ResourceId $grant.ResourceId
+            $grantedScopes = @(([string]$grant.Scope -split "\s+") | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
+            foreach ($scopeName in $grantedScopes) {
+                if ($useFilter -and -not $permissionFilter.Contains($scopeName)) { continue }
+
+                if ($EwsPermissions -contains $scopeName) { $hasEws = $true }
+                $isHighPrivilege = $HighPrivilegePermissionSet.Contains($scopeName)
+                $isExchangePermission = $ExchangePermissionSet.Contains($scopeName)
+                $isSharePointPermission = $SharePointPermissionSet.Contains($scopeName)
+
+                $appPermissions.Add([PSCustomObject]@{
+                    AppName                = $sp.DisplayName
+                    AppId                  = $sp.AppId
+                    AppSource              = "Enterprise App"
+                    ResourceName           = $resourceName
+                    Permission             = $scopeName
+                    PermissionType         = "Delegated"
+                    IsHighPrivilege        = $isHighPrivilege
+                    IsExchangePermission   = $isExchangePermission
+                    IsSharePointPermission = $isSharePointPermission
+                    HasEWS                 = $false
+                })
+            }
+        }
+
+        if ($useFilter -and $appPermissions.Count -eq 0) { continue }
+        foreach ($row in $appPermissions) { $row.HasEWS = $hasEws }
+        $reportData.AddRange($appPermissions)
     }
 
-    # If filtering is active and this app has no matching permissions, skip it
-    if ($useFilter -and $appPermissions.Count -eq 0) { continue }
-
-    # Update HasEWS flag on all rows for this app
-    foreach ($row in $appPermissions) { $row.HasEWS = $hasEws }
-
-    $reportData.AddRange($appPermissions)
+    Write-Progress -Id 2 -Activity "Analyzing enterprise apps" -Completed
 }
 
 Write-Host "Report data rows: $($reportData.Count)" -ForegroundColor Green
@@ -427,7 +633,8 @@ if (-not (Test-Path $reportsDir)) {
 }
 
 $timestamp   = Get-Date -Format "yyyyMMdd_HHmmss"
-$baseName    = "${tenantName}_${timestamp}"
+$tenantFileNameSegment = ConvertTo-SafeFileNameSegment -Value $tenantDisplayName -Fallback "UnknownTenant"
+$baseName    = "${tenantFileNameSegment}_${ReportVariant}_${timestamp}"
 $htmlPath    = Join-Path $reportsDir "${baseName}.html"
 $csvPath     = Join-Path $reportsDir "${baseName}.csv"
 
@@ -436,7 +643,15 @@ $csvPath     = Join-Path $reportsDir "${baseName}.csv"
 #region --- Generate CSV ---
 
 Write-Host "Generating CSV report..." -ForegroundColor Cyan
-$reportData | Select-Object AppName, AppId, ResourceName, Permission, PermissionType, IsHighPrivilege, IsExchangePermission, IsSharePointPermission, HasEWS |
+$csvColumns = @("AppName", "AppId")
+if ($showAppSourceColumn) {
+    $csvColumns += "AppSource"
+}
+$csvColumns += @("ResourceName", "Permission", "PermissionType", "IsHighPrivilege", "IsExchangePermission", "IsSharePointPermission", "HasEWS")
+
+$reportDataSorted = $reportData | Sort-Object AppName, AppSource, ResourceName, Permission
+
+$reportDataSorted | Select-Object $csvColumns |
     Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
 Write-Host "CSV saved: $csvPath" -ForegroundColor Green
 
@@ -447,7 +662,9 @@ Write-Host "CSV saved: $csvPath" -ForegroundColor Green
 Write-Host "Generating HTML report..." -ForegroundColor Cyan
 
 # Group rows by app for the HTML table
-$groupedApps = $reportData | Group-Object AppName | Sort-Object Name
+$groupedApps = $reportDataSorted |
+    Group-Object { "$($_.AppSource)|$($_.AppId)|$($_.AppName)" } |
+    Sort-Object { $_.Group[0].AppName }, { $_.Group[0].AppSource }
 $highlightHighPrivilege = $HighlightCategorySet.Contains("HighPrivilege")
 $highlightExchange = $HighlightCategorySet.Contains("Exchange")
 $highlightSharePoint = $HighlightCategorySet.Contains("SharePoint")
@@ -466,6 +683,10 @@ foreach ($group in $groupedApps) {
             $null = $htmlRows.Append("<tr>")
             $null = $htmlRows.Append("<td rowspan=`"$rowCount`"$appCellStyle>$([System.Web.HttpUtility]::HtmlEncode($row.AppName))$ewsBadge</td>")
             $null = $htmlRows.Append("<td rowspan=`"$rowCount`"><code>$([System.Web.HttpUtility]::HtmlEncode($row.AppId))</code></td>")
+            if ($showAppSourceColumn) {
+                $objectTypeClass = if ($row.AppSource -eq "Enterprise App") { "object-type-badge enterprise-app-badge" } else { "object-type-badge app-registration-badge" }
+                $null = $htmlRows.Append("<td rowspan=`"$rowCount`"><span class='$objectTypeClass'>$([System.Web.HttpUtility]::HtmlEncode($row.AppSource))</span></td>")
+            }
             $firstRow = $false
         } else {
             $null = $htmlRows.Append("<tr>")
@@ -503,9 +724,16 @@ $filterDesc = if ($useFilter) {
     "No filter applied &mdash; showing <strong>all</strong> permissions."
 }
 
+$enterpriseScopeDesc = if ($includeEnterpriseApps) {
+    if ($IncludeFirstPartyApps) { "Third-party + first-party enterprise apps" }
+    else { "Third-party enterprise apps only" }
+} else {
+    "Not in scope"
+}
+
 $generatedOn = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$totalAppCount = @($reportData | Select-Object -ExpandProperty AppId -Unique).Count
-$ewsAppCount   = @($reportData | Where-Object HasEWS | Select-Object -ExpandProperty AppId -Unique).Count
+$totalAppCount = @($reportData | ForEach-Object { "$($_.AppSource)|$($_.AppId)" } | Select-Object -Unique).Count
+$ewsAppCount   = @($reportData | Where-Object HasEWS | ForEach-Object { "$($_.AppSource)|$($_.AppId)" } | Select-Object -Unique).Count
 
 $legendItems = [System.Text.StringBuilder]::new()
 $null = $legendItems.Append("<div class='legend-item'><div class='legend-box'></div><span>App contains EWS permission(s)</span></div>")
@@ -519,13 +747,15 @@ if ($highlightSharePoint) {
     $null = $legendItems.Append("<div class='legend-item'><div class='legend-box sharepoint-box'></div><span>SharePoint permission</span></div>")
 }
 
+$executionTimeText = "Version: $ScriptVersion | Execution time to HTML finalization: pending..."
+
 $html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>App Permissions Report &ndash; $tenantName</title>
+<title>App Permissions Report ($reportVariantLabel) &ndash; $tenantDisplayLabel</title>
 <style>
   body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; background: #f4f6f9; color: #222; margin: 0; padding: 20px; }
   h1   { color: #0078d4; margin-bottom: 4px; }
@@ -533,10 +763,10 @@ $html = @"
   .filter-info { background: #e8f0fe; border-left: 4px solid #0078d4; padding: 8px 12px; margin-bottom: 16px; border-radius: 4px; }
     .legend { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; font-size: 12px; flex-wrap: wrap; }
     .legend-item { display: inline-flex; align-items: center; gap: 8px; }
-  .legend-box { width: 20px; height: 20px; border: 1px solid #aaa; border-radius: 3px; background: $EwsFlagColor; }
-    .high-priv-box { background: #ffe2e2; }
-        .exchange-box { background: #e8f3ff; }
-        .sharepoint-box { background: #e8f7ec; }
+    .legend-box { width: 20px; height: 20px; border: 1px solid #aaa; border-radius: 3px; background-color: $EwsFlagColor; }
+        .legend-box.high-priv-box { background-color: #a80000 !important; }
+                .legend-box.exchange-box { background-color: #0a64c5 !important; }
+                .legend-box.sharepoint-box { background-color: #107c10 !important; }
   table { border-collapse: collapse; width: 100%; background: #fff; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
   th { background: #0078d4; color: #fff; padding: 10px 12px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
   td { padding: 8px 12px; border-bottom: 1px solid #e5e9f0; vertical-align: top; }
@@ -544,6 +774,9 @@ $html = @"
   tr:hover td { filter: brightness(0.96); }
   code { font-size: 11px; background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
   .ews-badge { background: #c50000; color: #fff; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 10px; }
+    .object-type-badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; letter-spacing: .02em; border: 1px solid transparent; }
+    .app-registration-badge { background: #e8f3ff; color: #0b4f96; border-color: #8bb8ea; }
+    .enterprise-app-badge { background: #e9f9ef; color: #0f6b2d; border-color: #8fd4a8; }
     .high-priv-perm { background: #ffe2e2; }
     .high-priv-badge { background: #a80000; color: #fff; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 10px; margin-left: 6px; }
         .exchange-perm { background: #e8f3ff; }
@@ -553,11 +786,12 @@ $html = @"
   input[type=search] { padding: 7px 12px; width: 320px; border: 1px solid #ccc; border-radius: 20px; font-size: 13px; margin-bottom: 12px; outline: none; }
   input[type=search]:focus { border-color: #0078d4; box-shadow: 0 0 0 2px #c7e0f4; }
   .count { color: #555; font-size: 12px; margin-left: 8px; }
+    .footer-note { margin-top: 12px; color: #666; font-size: 11px; text-align: right; }
 </style>
 </head>
 <body>
-<h1>&#128274; App Permissions Report</h1>
-<div class="meta">Tenant: <strong>$tenantName</strong> &nbsp;|&nbsp; Generated: $generatedOn &nbsp;|&nbsp; Apps: <strong>$totalAppCount</strong> &nbsp;|&nbsp; EWS Apps: <strong>$ewsAppCount</strong> &nbsp;|&nbsp; Visible rows: <span id="visibleRowCount">$($reportData.Count)</span></div>
+<h1>&#128274; App Permissions Report - $reportVariantLabel</h1>
+<div class="meta">Tenant: <strong>$tenantDisplayLabel</strong> &nbsp;|&nbsp; Variant: <strong>$reportVariantLabel</strong> &nbsp;|&nbsp; Enterprise Scope: <strong>$enterpriseScopeDesc</strong> &nbsp;|&nbsp; Generated: $generatedOn &nbsp;|&nbsp; Apps: <strong>$totalAppCount</strong> &nbsp;|&nbsp; EWS Apps: <strong>$ewsAppCount</strong> &nbsp;|&nbsp; Visible rows: <span id="visibleRowCount">$($reportData.Count)</span></div>
 <div class="filter-info">$filterDesc</div>
 <div class="legend">
     $($legendItems.ToString())
@@ -568,6 +802,7 @@ $html = @"
   <tr>
     <th>App Name</th>
     <th>App ID</th>
+        $(if ($showAppSourceColumn) { '<th>Object Type</th>' })
     <th>Resource</th>
     <th>Permission</th>
     <th>Type</th>
@@ -577,6 +812,7 @@ $html = @"
 $($htmlRows.ToString())
 </tbody>
 </table>
+<div class="footer-note">$executionTimeText</div>
 <script>
 function filterTable() {
     var q = document.getElementById('searchBox').value.toLowerCase();
@@ -596,6 +832,11 @@ function filterTable() {
 "@
 
 $html | Out-File -FilePath $htmlPath -Encoding UTF8
+$scriptTimer.Stop()
+$elapsed = $scriptTimer.Elapsed
+$executionTimeTextFinal = "Version: $ScriptVersion | Execution time to HTML finalization: {0:00}:{1:00}:{2:00}.{3:000}" -f $elapsed.Hours, $elapsed.Minutes, $elapsed.Seconds, $elapsed.Milliseconds
+$htmlFinal = (Get-Content -Path $htmlPath -Raw).Replace($executionTimeText, $executionTimeTextFinal)
+$htmlFinal | Out-File -FilePath $htmlPath -Encoding UTF8
 Write-Host "HTML saved: $htmlPath" -ForegroundColor Green
 
 #endregion
@@ -621,8 +862,8 @@ foreach ($delivery in $DeliveryOptions) {
                 $mailParams = @{
                     To          = $EmailTo
                     From        = $EmailFrom
-                    Subject     = "App Permissions Report - $tenantName - $timestamp"
-                    Body        = "Please find the App Permissions Report attached.<br><br>Tenant: <b>$tenantName</b><br>Generated: $generatedOn"
+                    Subject     = "App Permissions Report ($reportVariantLabel) - $tenantDisplayLabel - $timestamp"
+                    Body        = "Please find the App Permissions Report attached.<br><br>Tenant: <b>$tenantDisplayLabel</b><br>Variant: <b>$reportVariantLabel</b><br>Enterprise Scope: <b>$enterpriseScopeDesc</b><br>Generated: $generatedOn"
                     BodyAsHtml  = $true
                     Attachments = @($htmlPath, $csvPath)
                     SmtpServer  = $SmtpServer
@@ -649,13 +890,15 @@ foreach ($delivery in $DeliveryOptions) {
                 $teamsBody = @{
                     "@type"      = "MessageCard"
                     "@context"   = "https://schema.org/extensions"
-                    summary      = "App Permissions Report - $tenantName"
+                    summary      = "App Permissions Report ($reportVariantLabel) - $tenantDisplayLabel"
                     themeColor   = "0078D4"
-                    title        = "&#128274; App Permissions Report"
+                    title        = "&#128274; App Permissions Report ($reportVariantLabel)"
                     sections     = @(
                         @{
                             facts = @(
-                                @{ name = "Tenant";       value = $tenantName }
+                                @{ name = "Tenant";       value = $tenantDisplayLabel }
+                                @{ name = "Variant";      value = $reportVariantLabel }
+                                @{ name = "Enterprise Scope"; value = $enterpriseScopeDesc }
                                 @{ name = "Generated";    value = $generatedOn }
                                 @{ name = "Total Rows";   value = "$($reportData.Count)" }
                                 @{ name = "EWS Apps";     value = if ($ewsApps) { $ewsApps } else { "None" } }
