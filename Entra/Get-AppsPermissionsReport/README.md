@@ -1,10 +1,10 @@
 # Get-AppsPermissionsReport
 
-`Get-AppsPermissionsReport.v2.ps1` generates a permissions inventory for Entra ID **app registrations**, **enterprise apps (service principals)**, or **both**, and exports the result to HTML and CSV.
+`Get-AppsPermissionsReport.ps1` generates a permissions inventory for Entra ID **app registrations**, **enterprise apps (service principals)**, or **both**, and exports the result to HTML and CSV.
 
 ## Version
 
-- Current version: `2.1.0`
+- Current version: `2.1.1`
 - The script stores the version in the `$ScriptVersion` variable.
 - The generated HTML report footer includes the version and execution time.
 
@@ -114,49 +114,49 @@ The Teams channel notification requires some code changes, because the direct we
 ### 1) Enterprise apps only — third-party (default)
 
 ```powershell
-.\Get-AppsPermissionsReport.v2.ps1
+.\Get-AppsPermissionsReport.ps1
 ```
 
 ### 2) Enterprise apps including Microsoft first-party apps
 
 ```powershell
-.\Get-AppsPermissionsReport.v2.ps1 -ReportVariant EnterpriseApps -IncludeFirstPartyApps
+.\Get-AppsPermissionsReport.ps1 -ReportVariant EnterpriseApps -IncludeFirstPartyApps
 ```
 
 ### 3) App registrations only
 
 ```powershell
-.\Get-AppsPermissionsReport.v2.ps1 -ReportVariant AppRegistrations
+.\Get-AppsPermissionsReport.ps1 -ReportVariant AppRegistrations
 ```
 
 ### 4) Both app registrations and enterprise apps (adds Object Type column)
 
 ```powershell
-.\Get-AppsPermissionsReport.v2.ps1 -ReportVariant Both
+.\Get-AppsPermissionsReport.ps1 -ReportVariant Both
 ```
 
 ### 5) Filter to Exchange and SharePoint permissions
 
 ```powershell
-.\Get-AppsPermissionsReport.v2.ps1 -PredefinedSets Exchange,SharePoint
+.\Get-AppsPermissionsReport.ps1 -PredefinedSets Exchange,SharePoint
 ```
 
 ### 6) Filter by custom permissions
 
 ```powershell
-.\Get-AppsPermissionsReport.v2.ps1 -CustomPermissions "User.Export.All","Directory.Read.All"
+.\Get-AppsPermissionsReport.ps1 -CustomPermissions "User.Export.All","Directory.Read.All"
 ```
 
 ### 7) Highlight all categories and open HTML automatically
 
 ```powershell
-.\Get-AppsPermissionsReport.v2.ps1 -HighlightCategories HighPrivilege,Exchange,SharePoint -OpenHtmlReport
+.\Get-AppsPermissionsReport.ps1 -HighlightCategories HighPrivilege,Exchange,SharePoint -OpenHtmlReport
 ```
 
 ### 8) Send by email
 
 ```powershell
-.\Get-AppsPermissionsReport.v2.ps1 `
+.\Get-AppsPermissionsReport.ps1 `
     -ReportVariant Both `
     -PredefinedSets Exchange `
     -DeliveryOptions FileSystem,Email `
@@ -168,7 +168,7 @@ The Teams channel notification requires some code changes, because the direct we
 ### 9) Use app-only auth with certificate
 
 ```powershell
-.\Get-AppsPermissionsReport.v2.ps1 `
+.\Get-AppsPermissionsReport.ps1 `
     -AuthMode AppCertificate `
     -TenantId "contoso.onmicrosoft.com" `
     -ClientId "00000000-0000-0000-0000-000000000000" `
@@ -179,7 +179,7 @@ The Teams channel notification requires some code changes, because the direct we
 
 ```powershell
 $secret = Read-Host "Client Secret" -AsSecureString
-.\Get-AppsPermissionsReport.v2.ps1 `
+.\Get-AppsPermissionsReport.ps1 `
     -AuthMode AppSecret `
     -TenantId "contoso.onmicrosoft.com" `
     -ClientId "00000000-0000-0000-0000-000000000000" `

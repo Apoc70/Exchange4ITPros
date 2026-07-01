@@ -9,7 +9,7 @@
     Generates an HTML report and a CSV report stored in a "Reports" subfolder.
     Apps containing EWS (Exchange Web Services) permissions are flagged in a configurable color.
     Delivery options: local filesystem, email, or Microsoft Teams channel webhook.
-    Current version: 2.1.0.
+    Current version: 2.1.1.
 
 .PARAMETER PredefinedSets
     Specify predefined permission sets to include: "Exchange", "SharePoint", or both.
@@ -93,7 +93,7 @@
     .\Get-AppsPermissionsReport.ps1 -HighlightCategories HighPrivilege,Exchange,SharePoint
 
 .NOTES
-    Version : 2.1.0
+    Version : 2.1.1
     Requires: Microsoft.Graph PowerShell SDK (modules: Microsoft.Graph.Applications, Microsoft.Graph.Identity.DirectoryManagement)
     Install : Install-Module Microsoft.Graph -Scope CurrentUser
 #>
@@ -140,7 +140,7 @@ param (
     [switch]$OpenHtmlReport
 )
 
-$ScriptVersion = "2.1.0"
+$ScriptVersion = "2.1.1"
 $scriptTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
 #region --- Permission Definitions ---
@@ -160,6 +160,8 @@ $PredefinedPermissionSets = @{
         "MailboxSettings.Read", "MailboxSettings.ReadWrite",
         # EWS
         "full_access_as_app", "full_access_as_user", "EWS.AccessAsUser.All",
+        # EAS
+        "EAS.AccessAsUser.All",
         # Exchange Admin
         "Exchange.ManageAsApp"
     )
