@@ -10,9 +10,6 @@ You must have the Exchange Management Shell or the Exchange Online PowerShell mo
 .LINK 
 https://exchangeforitpros.blog
 
-.LINK
-https://granikos.eu/go/ZtsJ
-
 .PARAMETER PublicFolderPath
 The path to the public folder from which to retrieve items.
 
