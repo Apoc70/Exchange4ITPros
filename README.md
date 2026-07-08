@@ -10,10 +10,10 @@ This repository collects community scripts used and shared as part of the Exchan
 
 | Folder | Scope |
 | --- | --- |
-| [ExchangeServer](./Exchange%20Server/) | Scripts for on-premises Exchange Server and Exchange Hybrid, using the Exchange Management Shell |
-| [ExchangeOnline](./Exchange%20Online/) | Scripts for Exchange Online, using the Exchange Online PowerShell module |
+| [Exchange Server](./Exchange%20Server/) | Scripts for on-premises Exchange Server and Exchange Hybrid, using the Exchange Management Shell |
+| [Exchange Online](./Exchange%20Online/) | Scripts for Exchange Online, using the Exchange Online PowerShell module |
 | [Entra](./Entra/) | Scripts for Entra ID, mostly using the Microsoft Graph PowerShell SDK |
-| [SharePointOnline](./SharePointOnline/) | Scripts for SharePoint Online, using PnP PowerShell |
+| [SharePoint Online](./SharePoint%20Online/) | Scripts for SharePoint Online, using PnP PowerShell |
 
 Each workload folder contains its own README with an overview of the available categories and scripts. Each script lives in its own subfolder together with a dedicated README describing purpose, parameters, and prerequisites.
 
