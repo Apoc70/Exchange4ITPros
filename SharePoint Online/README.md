@@ -6,7 +6,7 @@ Scripts for SharePoint Online, designed to run through PnP PowerShell.
 
 | Category | Description |
 | --- | --- |
-| PnP | Scripts using PnP PowerShell for SharePoint Online administration and automation |
+| Reporting | Scripts that collect and report on SharePoint Online configurations |
 
 Each category folder contains a short overview README with links to the individual scripts. Each script has its own folder with the script file and a dedicated README covering purpose, parameters, examples, and prerequisites.
 

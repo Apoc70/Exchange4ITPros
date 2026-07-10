@@ -9,6 +9,7 @@ Scripts for on-premises Exchange Server and Exchange Hybrid environments, design
 | Reporting | Scripts that collect and report on Exchange Server configuration, health, and inventory data |
 | Maintenance | Scripts that support day to day operational and maintenance tasks |
 | Migration | Scripts that support migration and hybrid coexistence scenarios |
+| Setup | Scripts that support during Exchange Server setup |
 
 Each category folder contains a short overview README with links to the individual scripts. Each script has its own folder with the script file and a dedicated README covering purpose, parameters, examples, and prerequisites.
 
