@@ -806,6 +806,11 @@ function Send-TestNotificationMail {
     )
 
     foreach ($template in $testTemplates) {
+        if ([string]::IsNullOrWhiteSpace($template.Path)) {
+            Write-ScriptLog -Message "Skipping $($template.Name) test email because the template path is empty." -Level 'Warning'
+            continue
+        }
+
         $templateContent = Get-NotificationTemplateContent -TemplatePath $template.Path
         $body = Format-NotificationContent -TemplateContent $templateContent -DisplayName $sampleDisplayName -DaysRemaining $sampleDaysRemaining -ExpiryDate $sampleExpiryDate
         $templateType = if ($template.IsHtml) { 'Html' } else { 'Text' }
