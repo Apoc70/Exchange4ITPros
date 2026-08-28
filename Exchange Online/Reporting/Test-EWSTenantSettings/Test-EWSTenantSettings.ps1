@@ -35,6 +35,9 @@
 .PARAMETER SkipReport
     Displays the configuration on screen only and does not write a snapshot file.
 
+.PARAMETER Disconnect
+    Disconnects from Exchange Online after the report is generated without prompting for confirmation.
+
 .EXAMPLE
     .\Test-EWSTenantSettings.ps1
 
@@ -50,6 +53,11 @@
     .\Test-EWSTenantSettings.ps1 -SkipReport
 
     Displays the current EWS configuration without writing a snapshot file.
+
+.EXAMPLE
+    .\Test-EWSTenantSettings.ps1 -Disconnect
+
+    Writes the configuration snapshot and disconnects from Exchange Online without confirmation.
 
 .NOTES
     Author: Thomas Stensitzki
@@ -72,7 +80,10 @@ param(
     [string]$ReportFormat = 'Json',
 
     [Parameter(Mandatory = $false)]
-    [switch]$SkipReport
+    [switch]$SkipReport,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$Disconnect
 )
 
 begin {
@@ -168,6 +179,27 @@ begin {
         }
 
         return $connection
+    }
+
+    function Disconnect-ExchangeOnlineIfRequested {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory = $false)]
+            [AllowNull()]
+            $EwsEnabled
+        )
+
+        if (-not $Disconnect) {
+            return
+        }
+
+        if ($EwsEnabled -isnot [bool]) {
+            Write-Host '  EWSEnabled is $null; staying connected for additional actions.' -ForegroundColor Yellow
+            return
+        }
+
+        Disconnect-ExchangeOnline -Confirm:$false -ErrorAction Stop
+        Write-Host '  Disconnected from Exchange Online.' -ForegroundColor DarkGray
     }
 }
 
@@ -294,6 +326,7 @@ process {
     if ($SkipReport) {
         Write-Host ''
         Write-Host '  SkipReport was specified, no snapshot file has been written.' -ForegroundColor DarkGray
+        Disconnect-ExchangeOnlineIfRequested -EwsEnabled $ewsEnabled
         Write-Host ''
         return
     }
@@ -330,4 +363,5 @@ process {
     }
 
     Write-Host ''
+    Disconnect-ExchangeOnlineIfRequested -EwsEnabled $ewsEnabled
 }
