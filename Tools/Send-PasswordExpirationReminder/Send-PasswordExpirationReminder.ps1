@@ -145,6 +145,7 @@
     1.2.0 - Added IncludeExpiredPasswordAccounts switch for ReportOnly mode.
     1.3.0 - Added TestEmail switch for SMTP and template validation.
     1.4.0 - Added UseTextTemplate switch to select the email template type.
+    1.4.1 - Added exit codes for success (0) and failure (99) to support scheduled task error handling.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
@@ -947,6 +948,7 @@ try {
                 $subject = $configuration.Subject -replace '\{DaysRemaining\}', $user.DaysRemaining
                 $body = Format-NotificationContent -TemplateContent $templateContent -DisplayName $user.DisplayName -DaysRemaining $user.DaysRemaining -ExpiryDate $user.ExpiryDate
 
+                # Send the notification email and record the entry in the tracking file if successful.
                 Send-NotificationMail -SmtpServer $configuration.Smtp.Server `
                     -SmtpPort $configuration.Smtp.Port `
                     -UseSsl $configuration.Smtp.UseSsl `
@@ -957,6 +959,7 @@ try {
                     -Body $body `
                     -IsBodyHtml $isHtml
 
+                # Record the notification in the tracking file only if the email was sent successfully.
                 if ($PSCmdlet.ShouldProcess($recipientAddress, 'Record notification in tracking file')) {
                     Add-NotificationLogEntry -TrackingFilePath $configuration.Logging.NotificationTrackingFilePath -SamAccountName $user.SamAccountName -DaysRemaining $user.DaysRemaining -Date (Get-Date)
                 }
@@ -964,9 +967,12 @@ try {
         }
     }
 
+    # Log the completion of the script execution.
     Write-ScriptLog -Message 'Password expiration reminder run completed.' -Level 'Info'
+    Exit 0
 }
 catch {
+    # Log the error and exit with a non-zero code to indicate failure.
     Write-ScriptLog -Message "Script execution failed: $($_.Exception.Message)" -Level 'Error'
-    throw
+    Exit 99
 }
