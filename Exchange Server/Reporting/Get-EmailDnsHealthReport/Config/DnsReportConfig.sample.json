@@ -1,0 +1,22 @@
+{
+  "Domains": [
+    "contoso.com",
+    "fabrikam.com"
+  ],
+  "DkimSelectors": {
+    "Default": [ "selector1", "selector2", "google", "s1", "s2", "k1", "k2" ],
+    "PerDomainSelectorAdds": {
+      "fabrikam.com": [ "fabrikamselector1", "fabrikamselector2" ]
+    }
+  },
+  "BimiSelector": "default",
+  "Email": {
+    "SmtpServer": "smtp.contoso.com",
+    "SmtpPort": 25,
+    "UseSsl": true,
+    "From": "dns-reports@contoso.com",
+    "To": [ "admin@contoso.com" ],
+    "Subject": "Email DNS Health Report"
+  },
+  "StateFileName": "DnsReportState.json"
+}

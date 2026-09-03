@@ -6,6 +6,7 @@ This repository section contains reporting scripts for Microsoft Exchange Server
 
 | Script | Purpose | Required Modules | Minimum Version |
 |---|---|---|---|
+| [Get-EmailDnsHealthReport](Get-EmailDnsHealthReport/README.md) | Checks email DNS records for configured domains and reports health changes in CSV and HTML formats | DnsClient, PowerShell | PowerShell 5.1 or 7 on Windows |
 | [Get-ExchangeEnvironmentReportv3](Get-ExchangeEnvironmentReportv3/README.md) | Generates a self-contained HTML overview of an Exchange environment | EMS | Exchange Server 2010 |
 
 ## Notes
