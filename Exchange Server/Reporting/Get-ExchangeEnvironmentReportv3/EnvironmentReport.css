@@ -1,0 +1,234 @@
+/*
+    Exchange Environment Report - Stylesheet
+    Refreshed color palette and typography, kept table based and Outlook/Word rendering
+    engine compatible since this file is also embedded inline when the report is sent
+    as an HTML mail body. Avoid flexbox, grid, box-shadow and CSS variables here.
+*/
+
+body {
+    font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif;
+    font-size: 10pt;
+    color: #262b33;
+    background-color: #ffffff;
+    margin: 16px;
+}
+
+h1 {
+    font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif;
+    font-size: 16px;
+    font-weight: bold;
+    color: #14233c;
+}
+
+h2 {
+    font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif;
+    font-size: 16px;
+    font-weight: bold;
+    color: #14233c;
+}
+
+h3 {
+    font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif;
+    font-size: 12px;
+    font-weight: normal;
+    color: #4a5568;
+}
+
+h4 {
+    font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif;
+    font-size: 10px;
+    font-weight: normal;
+    color: #6b7280;
+}
+
+table {
+    border-collapse: collapse;
+}
+
+/* Header, first table row showing labels for totals */
+table.header {
+  font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif;
+  border: 0px;
+  padding: 3px;
+  font-size: 11px;
+  width: 100%;
+}
+table tr.header {
+  background: #dfe7ee;
+}
+table th.header {
+  font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif;
+  color: #ffffff;
+  padding: 6px 8px;
+}
+table th.header-totalservers {
+  background: #1f4e79;
+}
+table th.header-totalmailboxes {
+  background: #2f6f4f;
+}
+table th.header-totalroles {
+  background: #9a6328;
+}
+
+/* Site overview */
+table.overview {
+  font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 3px;
+  border: 0px;
+}
+table th.overview {
+ color: #ffffff;
+ padding: 5px 6px;
+}
+
+table tr.overviewcolheader {
+  background: #1f4e79;
+}
+table tr.overviewcolsubheader {
+  background: #3a6ea5;
+}
+
+table tr.pre2007overviewcolheader {
+  background: #6b3fa0;
+}
+table tr.pre2007overviewcolsubheader {
+  background: #8a5cc2;
+}
+
+table tr.alternaterow {
+  background: #eef1f5;
+}
+table td.roledata {
+  text-align: center;
+  background: #cdeccd;
+  color: #14532d;
+  font-weight: bold;
+}
+
+
+/* Subheader, Exchange Server Versions, Org and roles */
+table tr.subheader {
+  background: #dfe7ee;
+}
+table th.subheader {
+  font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif, monospace, Lucida Console;
+  color: #ffffff;
+  font-size: 11px;
+  text-align: center;
+  padding: 4px 6px;
+}
+table th.subheader-totalservers {
+  background: #3c6ea4;
+}
+table th.subheader-totalmailboxes {
+  background: #4d8d69;
+}
+table th.subheader-totalroles {
+  background: #c7873a;
+}
+
+/* Header data, Mailbox numbers in header table */
+table tr.headerdata {
+  background: #eef1f5;
+}
+
+table td.headerdata {
+  font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif;
+  color: #14233c;
+  font-size: 11px;
+  text-align: center;
+  padding: 4px 6px;
+}
+
+table.dagsummary {
+  border: 0px;
+  padding: 3px;
+  width: 100%;
+  font-size:8pt;
+  font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif;
+  text-align: center;
+}
+table tr.dagsummary {
+  text-align: center;
+  background: #c1620e;
+  color: #ffffff;
+}
+table tr.dagsummarynondag {
+  text-align: center;
+  background: #c1620e;
+  color: #ffffff;
+}
+
+table.databases {
+  border: 0px;
+  padding: 3px;
+  width: 100%;
+  font-size:9pt;
+  font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+table tr.databases {
+  background: #f4c542;
+  text-align: center;
+}
+
+.dagtablefooter {
+  font-family: 'Segoe UI', Verdana, Geneva, Arial, Helvetica, sans-serif;
+  font-size:8pt;
+  color: #6b7280;
+}
+
+.center {
+  text-align: center;
+}
+
+.alert {
+  color: #c0392b;
+  font-weight: bold;
+}
+
+.highlight {
+  color: #9b59b6;
+  font-weight: bold;
+}
+
+.tooltip {
+  position: relative;
+  display: inline-block;
+  border-bottom: 1px dotted #6b7280;
+}
+
+.tooltip .tooltiptext {
+  visibility: hidden;
+  width: 120px;
+  background-color: #14233c;
+  color: #fff;
+  text-align: center;
+  border-radius: 4px;
+  padding: 5px 0;
+  position: absolute;
+  z-index: 1;
+  bottom: 125%;
+  left: 50%;
+  margin-left: -60px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.tooltip .tooltiptext::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #14233c transparent transparent transparent;
+}
+
+.tooltip:hover .tooltiptext {
+  visibility: visible;
+  opacity: 1;
+}
