@@ -1,0 +1,40 @@
+{
+    "requiredResourceAccess": [
+        {
+            "resourceName": "Microsoft Graph",
+            "resourceAppId": "00000003-0000-0000-c000-000000000000",
+            "resourceAccess": [
+                {
+                    "name": "Application.Read.All",
+                    "id": "9a5d68dd-52b0-4cc2-bd40-abcf44ac3a30",
+                    "type": "Role"
+                },
+                {
+                    "name": "AppRoleAssignment.ReadWrite.All",
+                    "id": "06b708a9-e830-4db3-a914-8e69da51d44f",
+                    "type": "Role"
+                },
+                {
+                    "name": "AuditLog.Read.All",
+                    "id": "b0afded3-3588-46d8-8b3d-9842eff778da",
+                    "type": "Role"
+                },
+                {
+                    "name": "AuditLogsQuery.Read.All",
+                    "id": "5e1e9171-754d-478c-812c-f1755a9a4c2d",
+                    "type": "Role"
+                },
+                {
+                    "name": "DelegatedPermissionGrant.Read.All",
+                    "id": "81b4724a-58aa-41c1-8a55-84ef97466587",
+                    "type": "Role"
+                },
+                {
+                    "name": "Directory.ReadWrite.All",
+                    "id": "7ab1d382-f21e-4acd-a863-ba3e13f7da61",
+                    "type": "Role"
+                }
+            ]
+        }
+    ]
+}
