@@ -1,39 +1,15 @@
 <#
-    MIT License
-
-    Copyright (c) Thomas Stensitzki
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE
-#>
-
-# Version 3.0.0, 2026-09-03
-
-<#
     .SYNOPSIS
     Creates an HTML report describing the On-Premises Exchange environment.
 
     Based on the original 1.6.2 version by Steve Goodman
 
+    Version 3.0.1, 2026-09-15
+
     .DESCRIPTION
 
     This script creates an HTML report showing the following information about an Exchange
-    2019, 2016, 2013, 2010, and, to a lesser extent, 2007 and 2003 environment.
+    Subscription Edition, 2019, 2016, 2013, 2010, and, to a lesser extent, 2007 and 2003 environment.
 
     Requirements
     * Exchange Server Management Shell 2010 or newer
@@ -89,15 +65,34 @@
     IMPORTANT NOTE: The script requires WMI and Remote Registry access to Exchange servers from the server
     it is run from to determine OS version, Update Rollup, Exchange 2007/2003 cluster and DB size information.
 
+    .NOTES
+
+    Revision History
+    --------------------------------------------------------------------------------
+    3.0.1   Added Markdown report export
+    3.0     Major update with new features and improvements
+
     .LINK
-    https://github.com/Apoc70/PowerShell-Scripts
+    https://github.com/Apoc70/Exchange4ITPros
 
     .PARAMETER HTMLReport
     Filename to write HTML Report to. If omitted, a filename in the format
     'Exchange Environment Report_yyyy-MM-dd_HH-mm.html' is generated.
 
+    .PARAMETER MarkdownReport
+    Filename to write the Markdown report to. Only used when -OutputFormat is 'Markdown' or 'Both'.
+    If omitted, a filename in the format 'Exchange Environment Report_yyyy-MM-dd_HH-mm.md' is generated.
+
+    .PARAMETER OutputFormat
+    The report output format(s) to generate. Valid values are 'HTML', 'Markdown', or 'Both'. Default: HTML
+    The Markdown report is derived from the same report content as the HTML report, rendered as GitHub
+    flavored Markdown tables instead of styled HTML tables.
+
     .PARAMETER SendMail
     Send Mail after completion. Set to $True to enable. If enabled, -MailFrom, -MailTo, -MailServer are mandatory
+    When -OutputFormat is 'Markdown', the Markdown file is attached and the mail body is a generic plain text
+    notice. Otherwise the HTML report is used as the mail body, and, if -OutputFormat is 'Both', the Markdown
+    file is attached in addition to the HTML file.
 
     .PARAMETER MailFrom
     Email address to send from. Passed directly to Send-MailMessage as -From
@@ -175,11 +170,22 @@
     .EXAMPLE
     Generate the HTML report and open it in the default browser when finished
     .\Get-ExchangeEnvironmentReport.ps1 -HTMLReport .\report.html -OpenInBrowser
+
+    .EXAMPLE
+    Generate only a Markdown report
+    .\Get-ExchangeEnvironmentReport.ps1 -OutputFormat Markdown -MarkdownReport .\report.md
+
+    .EXAMPLE
+    Generate both an HTML and a Markdown report and mail the HTML version with the Markdown file attached
+    .\Get-ExchangeEnvironmentReport.ps1 -OutputFormat Both -SendMail -MailFrom roaster@mcsmemail.de -MailTo grillmaster@mcsmemail.de -MailServer relay.mcsmemail.de
 #>
 [CmdletBinding()]
 param(
   [parameter(Position = 0, HelpMessage = 'Filename to write HTML report to')]
   [string]$HTMLReport = ('Exchange Environment Report_{0}.html' -f (Get-Date -Format 'yyyy-MM-dd_HH-mm')),
+  [string]$MarkdownReport = ('Exchange Environment Report_{0}.md' -f (Get-Date -Format 'yyyy-MM-dd_HH-mm')),
+  [ValidateSet('HTML', 'Markdown', 'Both')]
+  [string]$OutputFormat = 'HTML',
   [switch]$SendMail,
   [switch]$OpenInBrowser,
   [string]$MailFrom = '',
@@ -197,7 +203,7 @@ param(
 )
 
 # Version
-$ScriptVersion = '3.0.0'
+$ScriptVersion = '3.0.1'
 
 # Start Stop Watch
 $StopWatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -264,6 +270,184 @@ function ConvertTo-Hashtable {
       return $InputObject
     }
   }
+}
+
+<#
+    .SYNOPSIS
+    Strips HTML markup from a fragment and decodes HTML entities, turning it into plain text.
+
+    .DESCRIPTION
+    Used while converting the generated HTML report into Markdown. Converts <br> tags into
+    newlines, strips any remaining tags, and decodes HTML entities (e.g. &nbsp;, &amp;, &uarr;)
+    using System.Net.WebUtility.
+
+    .PARAMETER Fragment
+    The raw HTML fragment (inner content of a heading, paragraph, or table cell) to convert.
+
+    .EXAMPLE
+    ConvertFrom-HtmlFragment -Fragment '5.5&nbsp;GB<br/>Free'
+
+    .NOTES
+    Author: Thomas Stensitzki
+#>
+function ConvertFrom-HtmlFragment {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param(
+    [Parameter(Mandatory = $false)]
+    [AllowEmptyString()]
+    [string]$Fragment = ''
+  )
+
+  $Text = $Fragment -replace '(?i)<br\s*/?>', "`n"
+  $Text = $Text -replace '(?is)<[^>]+>', ''
+  $Text = [System.Net.WebUtility]::HtmlDecode($Text)
+
+  $Text.Trim()
+}
+
+<#
+    .SYNOPSIS
+    Converts the inner HTML of a single <table> element into a GitHub flavored Markdown table.
+
+    .DESCRIPTION
+    Parses <tr> rows and <th>/<td> cells out of the supplied HTML, honoring colspan by padding
+    additional empty cells so column counts line up. The first row found is rendered as the
+    Markdown table header; this collapses any secondary HTML header rows into regular data rows,
+    since Markdown tables only support a single header row.
+
+    .PARAMETER TableInnerHtml
+    The HTML located between an opening and closing <table> tag.
+
+    .EXAMPLE
+    ConvertTo-MarkdownTable -TableInnerHtml $Match.Groups[1].Value
+
+    .NOTES
+    Author: Thomas Stensitzki
+#>
+function ConvertTo-MarkdownTable {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param(
+    [Parameter(Mandatory = $false)]
+    [AllowEmptyString()]
+    [string]$TableInnerHtml = ''
+  )
+
+  $RowMatches = [regex]::Matches($TableInnerHtml, '(?is)<tr[^>]*>(.*?)</tr>')
+  $Rows = @()
+
+  foreach ($RowMatch in $RowMatches) {
+    $CellMatches = [regex]::Matches($RowMatch.Groups[1].Value, '(?is)<(th|td)([^>]*)>(.*?)</\1>')
+    $Cells = @()
+
+    foreach ($CellMatch in $CellMatches) {
+      $Colspan = 1
+      if ($CellMatch.Groups[2].Value -match '(?i)colspan\s*=\s*"?''?(\d+)') {
+        $Colspan = [int]$Matches[1]
+      }
+
+      $CellText = ConvertFrom-HtmlFragment -Fragment $CellMatch.Groups[3].Value
+      $CellText = ($CellText -replace '\r?\n', '<br>') -replace '\|', '\|'
+
+      $Cells += $CellText
+
+      for ($i = 1; $i -lt $Colspan; $i++) {
+        $Cells += ''
+      }
+    }
+
+    if ($Cells.Count -gt 0) {
+      $Rows += , $Cells
+    }
+  }
+
+  if ($Rows.Count -eq 0) {
+    return ''
+  }
+
+  $ColumnCount = ($Rows | ForEach-Object { $_.Count } | Measure-Object -Maximum).Maximum
+
+  $Lines = New-Object System.Collections.Generic.List[string]
+
+  for ($r = 0; $r -lt $Rows.Count; $r++) {
+    $Row = @($Rows[$r])
+
+    while ($Row.Count -lt $ColumnCount) {
+      $Row += ''
+    }
+
+    $Lines.Add('| ' + ($Row -join ' | ') + ' |')
+
+    if ($r -eq 0) {
+      $Separator = (1..$ColumnCount | ForEach-Object { '---' }) -join ' | '
+      $Lines.Add('| ' + $Separator + ' |')
+    }
+  }
+
+  [string]::Join("`n", $Lines)
+}
+
+<#
+    .SYNOPSIS
+    Converts the full generated HTML report into a Markdown document.
+
+    .DESCRIPTION
+    Strips the embedded stylesheet and document scaffolding, then walks the remaining HTML in
+    document order, turning h2-h4 headings into Markdown headings, <table> elements into
+    Markdown tables (see ConvertTo-MarkdownTable), and <p> elements into plain text lines.
+
+    .PARAMETER Html
+    The complete HTML report content, as produced for the HTML report / mail body.
+
+    .EXAMPLE
+    ConvertTo-MarkdownReport -Html $Output
+
+    .NOTES
+    Author: Thomas Stensitzki
+#>
+function ConvertTo-MarkdownReport {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Html
+  )
+
+  $Text = $Html
+  $Text = $Text -replace '(?is)<style.*?</style>', ''
+  $Text = $Text -replace '(?is)<!--.*?-->', ''
+  $Text = $Text -replace '(?is)</?(html|body)[^>]*>', ''
+  $Text = $Text -replace '(?is)<title>.*?</title>', ''
+
+  $Markdown = New-Object System.Text.StringBuilder
+
+  $Pattern = '(?is)<h([2-4])[^>]*>(.*?)</h\1>|<table[^>]*>(.*?)</table>|<p[^>]*>(.*?)</p>'
+
+  foreach ($Match in [regex]::Matches($Text, $Pattern)) {
+    if ($Match.Groups[1].Success) {
+      $Level = [int]$Match.Groups[1].Value
+      $HeadingText = ConvertFrom-HtmlFragment -Fragment $Match.Groups[2].Value
+      [void]$Markdown.AppendLine(('{0} {1}' -f ('#' * $Level), $HeadingText))
+      [void]$Markdown.AppendLine()
+    }
+    elseif ($Match.Groups[3].Success) {
+      $TableMarkdown = ConvertTo-MarkdownTable -TableInnerHtml $Match.Groups[3].Value
+      if ($TableMarkdown) {
+        [void]$Markdown.AppendLine($TableMarkdown)
+        [void]$Markdown.AppendLine()
+      }
+    }
+    else {
+      $ParagraphText = ConvertFrom-HtmlFragment -Fragment $Match.Groups[4].Value
+      if ($ParagraphText) {
+        [void]$Markdown.AppendLine($ParagraphText)
+        [void]$Markdown.AppendLine()
+      }
+    }
+  }
+
+  $Markdown.ToString()
 }
 
 <#
@@ -1894,11 +2078,14 @@ if (!(Get-Command -Name Get-ExchangeServer -ErrorAction SilentlyContinue)) {
 
 # 1.1.1 Check if CSS file is present
 # Issue #6
-if (Test-Path -Path (Join-Path -Path $ScriptDir -ChildPath $CssFileName)) {
-  Write-Verbose ('Using {0} as CSS file for HTML report.' -f $CssFileName )
-}
-else {
-  throw ('CSS file {0} is missing. It is required for a proper HTML report. Please see the GitHub repository for more information.' -f $CssFileName)
+# CSS is only required when an HTML report is generated
+if ($OutputFormat -ne 'Markdown') {
+  if (Test-Path -Path (Join-Path -Path $ScriptDir -ChildPath $CssFileName)) {
+    Write-Verbose ('Using {0} as CSS file for HTML report.' -f $CssFileName )
+  }
+  else {
+    throw ('CSS file {0} is missing. It is required for a proper HTML report. Please see the GitHub repository for more information.' -f $CssFileName)
+  }
 }
 
 # 1.1.2 Check if the Exchange version mapping JSON file is present
@@ -2235,20 +2422,32 @@ $Output += '</body></html>'
 
 # 2019-05-20 TST Updated to ensure script path as storage location
 $HtmlReportFullPath = Join-Path -Path (Split-Path -Path $script:MyInvocation.MyCommand.Path) -ChildPath $HTMLReport
+$MarkdownReportFullPath = Join-Path -Path (Split-Path -Path $script:MyInvocation.MyCommand.Path) -ChildPath $MarkdownReport
 
-try {
-  $Output | Out-File -FilePath $HtmlReportFullPath -Force -Encoding utf8 -ErrorAction Stop
-}
-catch {
-  throw ('Failed to write HTML report to {0}: {1}' -f $HtmlReportFullPath, $_.Exception.Message)
-}
-
-if ($OpenInBrowser) {
+if ($OutputFormat -in 'HTML', 'Both') {
   try {
-    Start-Process -FilePath $HtmlReportFullPath -ErrorAction Stop
+    $Output | Out-File -FilePath $HtmlReportFullPath -Force -Encoding utf8 -ErrorAction Stop
   }
   catch {
-    throw ('Failed to open report in the default browser: {0}' -f $_.Exception.Message)
+    throw ('Failed to write HTML report to {0}: {1}' -f $HtmlReportFullPath, $_.Exception.Message)
+  }
+
+  if ($OpenInBrowser) {
+    try {
+      Start-Process -FilePath $HtmlReportFullPath -ErrorAction Stop
+    }
+    catch {
+      throw ('Failed to open report in the default browser: {0}' -f $_.Exception.Message)
+    }
+  }
+}
+
+if ($OutputFormat -in 'Markdown', 'Both') {
+  try {
+    ConvertTo-MarkdownReport -Html $Output | Out-File -FilePath $MarkdownReportFullPath -Force -Encoding utf8 -ErrorAction Stop
+  }
+  catch {
+    throw ('Failed to write Markdown report to {0}: {1}' -f $MarkdownReportFullPath, $_.Exception.Message)
   }
 }
 
@@ -2263,14 +2462,32 @@ if ($SendMail) {
 
     $smtpMessage = New-Object System.Net.Mail.MailMessage $MailFrom, $MailTo
 
-    if (Test-Path -Path $HtmlReportFullPath) {
-      $smtpAttachment = New-Object Net.Mail.Attachment($HtmlReportFullPath, 'text/plain')
-      $smtpMessage.Attachments.Add($smtpAttachment)
-    }
+    if ($OutputFormat -eq 'Markdown') {
+      # Markdown only: attach the Markdown file and send a generic plain text body
+      if (Test-Path -Path $MarkdownReportFullPath) {
+        $smtpAttachment = New-Object Net.Mail.Attachment($MarkdownReportFullPath, 'text/markdown')
+        $smtpMessage.Attachments.Add($smtpAttachment)
+      }
 
-    $smtpMessage.Subject = $ReportTitle
-    $smtpMessage.Body = $Output
-    $smtpMessage.IsBodyHtml = $true
+      $smtpMessage.Subject = $ReportTitle
+      $smtpMessage.Body = ('The {0} has been generated and is attached as a Markdown file.' -f $ReportTitle)
+      $smtpMessage.IsBodyHtml = $false
+    }
+    else {
+      if (Test-Path -Path $HtmlReportFullPath) {
+        $smtpAttachment = New-Object Net.Mail.Attachment($HtmlReportFullPath, 'text/plain')
+        $smtpMessage.Attachments.Add($smtpAttachment)
+      }
+
+      if ($OutputFormat -eq 'Both' -and (Test-Path -Path $MarkdownReportFullPath)) {
+        $smtpAttachment = New-Object Net.Mail.Attachment($MarkdownReportFullPath, 'text/markdown')
+        $smtpMessage.Attachments.Add($smtpAttachment)
+      }
+
+      $smtpMessage.Subject = $ReportTitle
+      $smtpMessage.Body = $Output
+      $smtpMessage.IsBodyHtml = $true
+    }
 
     $smtpMail.Send($smtpMessage)
   }
