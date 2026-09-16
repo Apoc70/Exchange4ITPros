@@ -4,7 +4,7 @@
 
 ## Version
 
-- Current version: `2.1.1`
+- Current version: `2.1.2`
 - The script stores the version in the `$ScriptVersion` variable.
 - The generated HTML report footer includes the version and execution time.
 
@@ -65,6 +65,8 @@ Requires:
 |---|---|---|---|
 | `-ReportVariant` | `AppRegistrations` \| `EnterpriseApps` \| `Both` | `EnterpriseApps` | Select which objects to include in the report |
 | `-IncludeFirstPartyApps` | Switch | off | Include Microsoft first-party enterprise apps. Default is third-party only |
+| `-EwsOnly` | Switch | off | Limit HTML and CSV reports to apps with EWS-related permissions |
+| `-OutputEwsAppIds` | Switch | off | Write unique EWS-enabled app IDs to the console, one per line |
 | `-PredefinedSets` | `Exchange`, `SharePoint` | — | Filter by built-in permission groups |
 | `-CustomPermissions` | String array | — | Additional permission names to include in filter |
 | `-HighlightCategories` | `HighPrivilege`, `Exchange`, `SharePoint` | `HighPrivilege` | Controls HTML highlighting and badges |
@@ -186,11 +188,18 @@ $secret = Read-Host "Client Secret" -AsSecureString
     -ClientSecret $secret
 ```
 
+### 11) Report EWS-enabled apps and print their app IDs
+
+```powershell
+.\Get-AppsPermissionsReport.ps1 -EwsOnly -OutputEwsAppIds
+```
+
 ## Notes
 
 - Default `-ReportVariant` is `EnterpriseApps` with third-party apps only. Use `-IncludeFirstPartyApps` to add Microsoft-published apps.
 - The "Object Type" column in the HTML/CSV only appears when `-ReportVariant Both` is selected.
 - If `-PredefinedSets` and `-CustomPermissions` are both omitted, the script reports all discovered permissions.
+- `-EwsOnly` limits the HTML and CSV to apps where an EWS-related permission was found. `-OutputEwsAppIds` writes unique matching App IDs, one per output line.
 - Enterprise app delegated permissions are read from OAuth2 permission grants; application permissions are read from app role assignments.
 - If email or Teams settings are incomplete, the script skips that delivery path and continues.
 - EWS-related permissions currently tracked: `full_access_as_app`, `full_access_as_user`, `EWS.AccessAsUser.All`, `Exchange.ManageAsApp`.

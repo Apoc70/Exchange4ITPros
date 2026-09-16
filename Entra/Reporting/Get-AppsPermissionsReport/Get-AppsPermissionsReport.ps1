@@ -73,6 +73,12 @@
 .PARAMETER OpenHtmlReport
     Opens the generated HTML report in the default browser after script completion.
 
+.PARAMETER EwsOnly
+    Limits the report to apps with one or more EWS-related permissions.
+
+.PARAMETER OutputEwsAppIds
+    Writes unique EWS-enabled app IDs to the console, one ID per line, for copy and paste use.
+
 .EXAMPLE
     .\Get-AppsPermissionsReport.ps1 -PredefinedSets Exchange,SharePoint -DeliveryOptions FileSystem,Email -EmailTo admin@contoso.com -EmailFrom noreply@contoso.com -SmtpServer smtp.contoso.com
 
@@ -93,7 +99,9 @@
     .\Get-AppsPermissionsReport.ps1 -HighlightCategories HighPrivilege,Exchange,SharePoint
 
 .NOTES
-    Version : 2.1.1
+    Revision history:
+      2.1.2 - Added EWS-only reporting and console output of EWS-enabled app IDs.
+      2.1.1 - Added report variants, app-only authentication, and permission highlighting.
     Requires: Microsoft.Graph PowerShell SDK (modules: Microsoft.Graph.Applications, Microsoft.Graph.Identity.DirectoryManagement)
     Install : Install-Module Microsoft.Graph -Scope CurrentUser
 #>
@@ -137,11 +145,24 @@ param (
 
     [switch]$IncludeFirstPartyApps,
 
-    [switch]$OpenHtmlReport
+    [switch]$OpenHtmlReport,
+
+    [switch]$EwsOnly,
+
+    [switch]$OutputEwsAppIds
 )
 
-$ScriptVersion = "2.1.1"
+$ScriptVersion = "2.1.2"
 $scriptTimer = [System.Diagnostics.Stopwatch]::StartNew()
+
+function Write-ActivityStatus {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    Write-Host ("  {0}" -f $Message) -ForegroundColor Cyan
+}
 
 #region --- Permission Definitions ---
 
@@ -239,7 +260,7 @@ function Get-PermissionFilter {
 
 #region --- Connect to Microsoft Graph ---
 
-Write-Host "Connecting to Microsoft Graph..." -ForegroundColor Cyan
+Write-ActivityStatus "Connecting to Microsoft Graph..."
 try {
     switch ($AuthMode) {
         "Interactive" {
@@ -306,7 +327,7 @@ catch {
 
 #region --- Fetch Tenant Info ---
 
-Write-Host "Fetching tenant information..." -ForegroundColor Cyan
+Write-ActivityStatus "Fetching tenant information..."
 try {
     $tenantDetails = Get-MgOrganization -ErrorAction Stop | Select-Object -First 1
     $tenantDisplayName = [string]$tenantDetails.DisplayName
@@ -357,7 +378,7 @@ function ConvertTo-SafeFileNameSegment {
 
 #region --- Fetch Service Principals (resource apps) for permission name resolution ---
 
-Write-Host "Fetching service principals for permission name resolution..." -ForegroundColor Cyan
+Write-ActivityStatus "Fetching service principals for permission name resolution..."
 $allServicePrincipals = Get-MgServicePrincipal -All -Property "Id,AppId,DisplayName,AppRoles,Oauth2PermissionScopes,ServicePrincipalType,PublisherName,AppOwnerOrganizationId" -ErrorAction SilentlyContinue
 
 # Build lookup: AppId -> ServicePrincipal
@@ -435,13 +456,13 @@ function Test-IsFirstPartyEnterpriseApp {
 
 $permissionFilter = Get-PermissionFilter -Sets $PredefinedSets -Custom $CustomPermissions
 $useFilter        = $permissionFilter.Count -gt 0
-Write-Host "Permission filter active: $useFilter$(if ($useFilter) { " ($($permissionFilter.Count) permissions)" })" -ForegroundColor Cyan
+Write-ActivityStatus "Permission filter active: $useFilter$(if ($useFilter) { " ($($permissionFilter.Count) permissions)" })"
 
 #endregion
 
 #region --- Process Apps ---
 
-Write-Host "Processing app permissions..." -ForegroundColor Cyan
+Write-ActivityStatus "Processing app permissions..."
 
 $includeAppRegistrations = $ReportVariant -in @("AppRegistrations", "Both")
 $includeEnterpriseApps   = $ReportVariant -in @("EnterpriseApps", "Both")
@@ -462,7 +483,7 @@ $reportVariantLabel = switch ($ReportVariant) {
 $reportData = [System.Collections.Generic.List[PSCustomObject]]::new()
 
 if ($includeAppRegistrations) {
-    Write-Host "Fetching app registrations..." -ForegroundColor Cyan
+    Write-ActivityStatus "Fetching app registrations..."
     $apps = Get-MgApplication -All -Property "Id,AppId,DisplayName,RequiredResourceAccess,SignInAudience,CreatedDateTime" -ErrorAction Stop
     Write-Host "Found $($apps.Count) app registrations." -ForegroundColor Green
 
@@ -522,7 +543,7 @@ if ($includeAppRegistrations) {
 }
 
 if ($includeEnterpriseApps) {
-    Write-Host "Fetching enterprise apps..." -ForegroundColor Cyan
+    Write-ActivityStatus "Fetching enterprise apps..."
     $enterpriseApps = $allServicePrincipals |
         Where-Object { $_.ServicePrincipalType -eq "Application" -and -not [string]::IsNullOrWhiteSpace($_.DisplayName) }
 
@@ -624,6 +645,17 @@ if ($includeEnterpriseApps) {
 
 Write-Host "Report data rows: $($reportData.Count)" -ForegroundColor Green
 
+if ($EwsOnly) {
+    $reportData = [System.Collections.Generic.List[PSCustomObject]]@($reportData | Where-Object HasEWS)
+    Write-ActivityStatus "EWS-only filter active. Report data rows: $($reportData.Count)"
+}
+
+if ($OutputEwsAppIds) {
+    $ewsAppIds = @($reportData | Where-Object HasEWS | Select-Object -ExpandProperty AppId -Unique | Sort-Object)
+    Write-ActivityStatus "EWS-enabled app IDs:"
+    $ewsAppIds | ForEach-Object { Write-Output $_ }
+}
+
 #endregion
 
 #region --- Prepare output folder and filenames ---
@@ -644,7 +676,7 @@ $csvPath     = Join-Path $reportsDir "${baseName}.csv"
 
 #region --- Generate CSV ---
 
-Write-Host "Generating CSV report..." -ForegroundColor Cyan
+Write-ActivityStatus "Generating CSV report..."
 $csvColumns = @("AppName", "AppId")
 if ($showAppSourceColumn) {
     $csvColumns += "AppSource"
@@ -661,7 +693,7 @@ Write-Host "CSV saved: $csvPath" -ForegroundColor Green
 
 #region --- Generate HTML ---
 
-Write-Host "Generating HTML report..." -ForegroundColor Cyan
+Write-ActivityStatus "Generating HTML report..."
 
 # Group rows by app for the HTML table
 $groupedApps = $reportDataSorted |
@@ -855,7 +887,7 @@ foreach ($delivery in $DeliveryOptions) {
         }
 
         "Email" {
-            Write-Host "Sending report via email..." -ForegroundColor Cyan
+            Write-ActivityStatus "Sending report via email..."
             if (-not $EmailTo -or -not $EmailFrom -or -not $SmtpServer) {
                 Write-Warning "Email delivery requires -EmailTo, -EmailFrom, and -SmtpServer parameters. Skipping."
                 continue
@@ -882,7 +914,7 @@ foreach ($delivery in $DeliveryOptions) {
         }
 
         "Teams" {
-            Write-Host "Sending notification to Teams channel..." -ForegroundColor Cyan
+            Write-ActivityStatus "Sending notification to Teams channel..."
             if (-not $TeamsWebhookUrl) {
                 Write-Warning "Teams delivery requires -TeamsWebhookUrl parameter. Skipping."
                 continue
@@ -928,7 +960,7 @@ Write-Host "`nDone! Reports stored in: $reportsDir" -ForegroundColor Cyan
 if ($OpenHtmlReport) {
     try {
         if (Test-Path -Path $htmlPath) {
-            Write-Host "Opening HTML report in default browser..." -ForegroundColor Cyan
+            Write-ActivityStatus "Opening HTML report in default browser..."
             Start-Process -FilePath $htmlPath
         } else {
             Write-Warning "HTML report not found at expected path: $htmlPath"
