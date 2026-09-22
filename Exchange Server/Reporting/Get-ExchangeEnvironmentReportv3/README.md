@@ -1,8 +1,27 @@
 # Exchange Environment Report
 
-`Get-ExchangeEnvironmentReport.ps1` creates a self-contained HTML overview of an on-premises Microsoft Exchange environment.
+This folder now contains a released standalone script and a separate editable source tree.
+
+- `Get-ExchangeEnvironmentReport.ps1` in the project root is the released version used in production.
+- The editable source files live under `Source\` and include the PowerShell script, CSS, and version mapping JSON.
+- `Build\Build-Standalone.ps1` creates the root-level release script by embedding the CSS and version mappings from the `Source` folder.
 
 The report is intended for Exchange 2007 through Exchange Server 2019 and includes limited support for older Exchange versions. It summarizes servers, roles, versions, update levels, mailbox counts, sites, namespaces, database availability groups, mailbox databases, database sizes, free disk space, backups, and circular logging.
+
+## Repository layout
+
+```text
+Get-ExchangeEnvironmentReportv3/
+├── Get-ExchangeEnvironmentReport.ps1      # released standalone script
+├── Build/
+│   └── Build-Standalone.ps1              # creates the standalone release file
+├── Source/
+│   ├── Get-ExchangeEnvironmentReport.ps1  # editable source script
+│   ├── EnvironmentReport.css              # HTML styling
+│   └── ExchangeVersionMappings.json       # Exchange build/version mapping
+├── README.md
+└── LICENSE
+```
 
 ## Requirements
 
@@ -10,9 +29,7 @@ The report is intended for Exchange 2007 through Exchange Server 2019 and includ
 - The Exchange Management Shell or Exchange management tools installed on the computer running the script.
 - An account with permission to query the Exchange organization and mailbox databases.
 - WMI and Remote Registry access from the computer running the script to the Exchange servers. These are needed for operating-system, disk-space, database-size, update-rollup, and legacy cluster information.
-- The following files in the same folder as the script:
-  - `EnvironmentReport.css`
-  - `ExchangeVersionMappings.json`
+- For the released root script, no additional `EnvironmentReport.css` or `ExchangeVersionMappings.json` files are required because they are embedded during the build process.
 
 Run the script from an Exchange Management Shell session, or allow the script to load the local Exchange management components automatically.
 
@@ -24,6 +41,12 @@ Set-Location 'C:\path\to\Get-ExchangeEnvironmentReportv3'
 ```
 
 The report is written relative to the script folder using a filename such as `Exchange Environment Report_2026-09-03_14-30.html`. The script shows progress while it collects data. Use `-OpenInBrowser` to open the report automatically when collection finishes. Supply `-HTMLReport` when a custom filename is required.
+
+To rebuild the standalone release from the source files after making changes in `Source\`, run:
+
+```powershell
+.\Build\Build-Standalone.ps1
+```
 
 ## Examples
 
@@ -121,9 +144,11 @@ The script continues when some optional information cannot be collected and writ
 - The script does not authenticate to SMTP. The configured SMTP server must accept the connection from the host running the script.
 - Run the script with the latest available Exchange management tools when reporting on newer Exchange versions.
 
-## Updating version mappings
+## Updating version mappings and source files
 
-Exchange build-to-version and security-update mappings are maintained in `ExchangeVersionMappings.json`. Update that file when new Microsoft cumulative updates or security updates are released. The script reads the mapping at runtime, so mapping changes do not require editing the PowerShell script.
+Exchange build-to-version and security-update mappings are maintained in `Source\ExchangeVersionMappings.json`. Update that file when new Microsoft cumulative updates or security updates are released, then rebuild the standalone script with `Build\Build-Standalone.ps1` so the embedded mapping is refreshed.
+
+If you change the script logic, CSS, or report content, edit the files under `Source\` and regenerate the root-level release script instead of modifying the generated standalone file directly.
 
 ### A Small Versioning Trick
 
