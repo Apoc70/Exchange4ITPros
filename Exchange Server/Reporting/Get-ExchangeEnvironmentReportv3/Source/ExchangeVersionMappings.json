@@ -1,6 +1,7 @@
 {
   "SchemaVersion": "1.0",
-  "LastUpdated": "2026-09-09",
+  "MappingVersion": "2026.09.1",
+  "LastUpdated": "2026-09-18",
   "MajorVersions": {
     "6.0": { "Long": "Exchange 2000", "Short": "E2000" },
     "6.5": { "Long": "Exchange 2003", "Short": "E2003" },

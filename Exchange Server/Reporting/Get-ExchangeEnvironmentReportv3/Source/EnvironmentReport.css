@@ -1,6 +1,6 @@
 /*
-    Exchange Environment Report - Stylesheet
-    Refreshed color palette and typography, kept table based and Outlook/Word rendering
+    Exchange Environment Report - Stylesheet 
+    Refreshed color palette and typography, kept table-based and Outlook/Word rendering
     engine compatible since this file is also embedded inline when the report is sent
     as an HTML mail body. Avoid flexbox, grid, box-shadow and CSS variables here.
 */
