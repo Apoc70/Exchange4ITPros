@@ -7,7 +7,7 @@
     THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE
     RISK OF THE USE OR THE RESULTS FROM THE USE OF THIS CODE REMAINS WITH THE USER.
 
-    Version 1.6, 2026-09-11
+    Version 1.7, 2026-09-17
 
     Based on the work of Andres Bohren
     https://blog.icewolf.ch/archive/2022/12/02/create-azure-ad-app-registration-with-microsoft-graph-powershell
@@ -26,6 +26,7 @@
     1.4     Required API permissions are now read from AppPermissions.json
     1.5     Parameter GrantAdminConsent added
     1.6     Parameter TenantId added, check for existing app registration added
+    1.7     Logging for successfully added app registrations added
 
     .PARAMETER TenantId
 
@@ -78,6 +79,11 @@
     Switch to grant admin consent for the configured API permissions by code, instead of using the Entra portal.
     Requires the executing account to be a member of the Privileged Role Administrator or Global Administrator role.
 
+    .PARAMETER RegistrationLogPath
+
+    Path to the CSV file used to document successfully added app registrations.
+    Defaults to AppRegistrationLog.csv in the script folder.
+
     All permissions and IDs
     https://learn.microsoft.com/graph/permissions-reference#all-permissions-and-ids
 
@@ -95,7 +101,8 @@ param(
     [switch]$OpenBrowser,
     [switch]$PrivateBrowserSession,
     [string]$PermissionsConfigPath = (Join-Path -Path $PSScriptRoot -ChildPath 'AppPermissions.json'),
-    [switch]$GrantAdminConsent
+    [switch]$GrantAdminConsent,
+    [string]$RegistrationLogPath = (Join-Path -Path $PSScriptRoot -ChildPath 'AppRegistrationLog.csv')
 )
 
 # Maximum application logo file size accepted by Entra ID
@@ -166,7 +173,7 @@ else {
 }
 
 # Connect to Microsoft Graph
-$graphScopes = @('Application.Read.All', 'Application.ReadWrite.All', 'User.Read.All')
+$graphScopes = @('Application.Read.All', 'Application.ReadWrite.All', 'Organization.Read.All', 'User.Read.All')
 
 if ($GrantAdminConsent) {
     # Granting consent by code requires permission to create app role assignments and delegated permission grants
@@ -184,6 +191,21 @@ if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
 }
 
 Connect-MgGraph @connectParams
+
+# Get tenant information for the registration log before making tenant changes
+try {
+    $organizationResponse = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization?$select=displayName,verifiedDomains' -ErrorAction Stop
+    $organization = @($organizationResponse.value)[0]
+    $defaultDomain = @($organization.verifiedDomains | Where-Object { $_.isDefault })[0].name
+
+    if ([string]::IsNullOrWhiteSpace($defaultDomain)) {
+        $defaultDomain = @($organization.verifiedDomains)[0].name
+    }
+}
+catch {
+    Write-Warning -Message ('Unable to retrieve tenant information required for registration logging: {0}' -f $_.Exception.Message)
+    exit
+}
 
 # Check whether an application registration with the same name already exists
 $escapedAppName = $AppName -replace "'", "''"
@@ -289,6 +311,22 @@ $params = @{
 }
 
 $null = Update-MgApplication -ApplicationId $appObjectId -IsFallbackPublicClient -PublicClient $params
+
+# Document the successfully configured app registration
+try {
+    $registrationLogEntry = [PSCustomObject]@{
+        TimestampUtc      = (Get-Date).ToUniversalTime().ToString('o')
+        TenantDisplayName = $organization.displayName
+        TenantDomain      = $defaultDomain
+        EnterpriseAppName = $newApp.DisplayName
+    }
+
+    $registrationLogEntry | Export-Csv -LiteralPath $RegistrationLogPath -NoTypeInformation -Encoding UTF8 -Append -ErrorAction Stop
+    Write-Host ('Registration documented in {0}' -f $RegistrationLogPath) -ForegroundColor Green
+}
+catch {
+    Write-Warning -Message ('The app registration was added, but the documentation log could not be written to {0}: {1}' -f $RegistrationLogPath, $_.Exception.Message)
+}
 
 if ($GrantAdminConsent) {
 

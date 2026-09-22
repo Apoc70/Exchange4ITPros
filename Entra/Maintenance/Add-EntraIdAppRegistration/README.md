@@ -27,7 +27,8 @@ Install-Module Microsoft.Graph -Scope AllUsers
 6. Creates a client secret or leaves the application ready for a certificate.
 7. Applies the configured API permissions and the public client redirect URI.
 8. Optionally grants tenant-wide admin consent.
-9. Displays the application ID and, when created, the client secret.
+9. Appends the successful registration to a documentation log.
+10. Displays the application ID and, when created, the client secret.
 
 The script does not overwrite an existing app registration with the same display name.
 
@@ -94,6 +95,15 @@ Use `-PrivateBrowserSession` together with `-OpenBrowser` to open the URL in a p
 | `-PrivateBrowserSession` | Opens the admin-consent URL in a private browser window. Requires `-OpenBrowser`. |
 | `-PermissionsConfigPath` | Path to a permissions JSON file. Defaults to `AppPermissions.json` beside the script. |
 | `-GrantAdminConsent` | Grants configured application and delegated permissions by code instead of requiring portal consent. |
+| `-RegistrationLogPath` | Path to the CSV documentation log. Defaults to `AppRegistrationLog.csv` beside the script. |
+
+## Registration log
+
+After an app registration is successfully configured, the script appends one record to the CSV file specified by `-RegistrationLogPath`. Each record contains the UTC timestamp, tenant display name, tenant default domain, and enterprise application name. Existing records are preserved.
+
+The log is intended only for documentation and does not contain the application ID, object ID, client secret, or certificate information. If the log cannot be written, the script displays a warning without removing or changing the app registration.
+
+Retrieving the tenant information for this log requires the delegated Microsoft Graph permission `Organization.Read.All`, which the script requests when connecting.
 
 ## Permissions configuration
 

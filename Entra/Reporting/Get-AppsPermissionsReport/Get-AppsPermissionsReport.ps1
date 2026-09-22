@@ -9,7 +9,7 @@
     Generates an HTML report and a CSV report stored in a "Reports" subfolder.
     Apps containing EWS (Exchange Web Services) permissions are flagged in a configurable color.
     Delivery options: local filesystem, email, or Microsoft Teams channel webhook.
-    Current version: 2.1.1.
+    Current version: 2.1.3.
 
 .PARAMETER PredefinedSets
     Specify predefined permission sets to include: "Exchange", "SharePoint", or both.
@@ -59,6 +59,10 @@
 .PARAMETER ClientSecret
     Client secret (as SecureString) used with AuthMode AppSecret.
 
+.PARAMETER ConfigPath
+    Path to a JSON configuration file containing tenantid, clientid, and certthumbprint.
+    When specified, certificate-based app authentication is used.
+
 .PARAMETER HighlightCategories
     Select permission highlight categories for the HTML report.
     Supports any combination of: HighPrivilege, Exchange, SharePoint.
@@ -92,6 +96,9 @@
     .\Get-AppsPermissionsReport.ps1 -AuthMode AppCertificate -TenantId "contoso.onmicrosoft.com" -ClientId "00000000-0000-0000-0000-000000000000" -CertificateThumbprint "ABCDEF1234567890ABCDEF1234567890ABCDEF12"
 
 .EXAMPLE
+    .\Get-AppsPermissionsReport.ps1 -ConfigPath .\config.json
+
+.EXAMPLE
     $secret = Read-Host "Client Secret" -AsSecureString
     .\Get-AppsPermissionsReport.ps1 -AuthMode AppSecret -TenantId "contoso.onmicrosoft.com" -ClientId "00000000-0000-0000-0000-000000000000" -ClientSecret $secret
 
@@ -100,6 +107,7 @@
 
 .NOTES
     Revision history:
+      2.1.3 - Added JSON configuration file support for certificate authentication.
       2.1.2 - Added EWS-only reporting and console output of EWS-enabled app IDs.
       2.1.1 - Added report variants, app-only authentication, and permission highlighting.
     Requires: Microsoft.Graph PowerShell SDK (modules: Microsoft.Graph.Applications, Microsoft.Graph.Identity.DirectoryManagement)
@@ -137,6 +145,8 @@ param (
 
     [System.Security.SecureString]$ClientSecret,
 
+    [string]$ConfigPath,
+
     [ValidateSet("HighPrivilege", "Exchange", "SharePoint")]
     [string[]]$HighlightCategories = @("HighPrivilege"),
 
@@ -152,7 +162,7 @@ param (
     [switch]$OutputEwsAppIds
 )
 
-$ScriptVersion = "2.1.2"
+$ScriptVersion = "2.1.3"
 $scriptTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
 function Write-ActivityStatus {
@@ -254,6 +264,36 @@ function Get-PermissionFilter {
         $null = $filter.Add($perm)
     }
     return $filter
+}
+
+#endregion
+
+#region --- Load Authentication Configuration ---
+
+if ($ConfigPath) {
+    if ($PSBoundParameters.ContainsKey('AuthMode') -and $AuthMode -ne 'AppCertificate') {
+        throw "-ConfigPath can only be used with AuthMode 'AppCertificate'."
+    }
+
+    try {
+        $resolvedConfigPath = (Resolve-Path -LiteralPath $ConfigPath -ErrorAction Stop).Path
+        $authConfig = Get-Content -LiteralPath $resolvedConfigPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        throw "Failed to load authentication configuration from '$ConfigPath': $_"
+    }
+
+    $TenantId = [string]$authConfig.tenantid
+    $ClientId = [string]$authConfig.clientid
+    $CertificateThumbprint = [string]$authConfig.certthumbprint
+
+    if ([string]::IsNullOrWhiteSpace($TenantId) -or
+        [string]::IsNullOrWhiteSpace($ClientId) -or
+        [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
+        throw "Authentication configuration must contain non-empty tenantid, clientid, and certthumbprint values."
+    }
+
+    $AuthMode = 'AppCertificate'
 }
 
 #endregion
