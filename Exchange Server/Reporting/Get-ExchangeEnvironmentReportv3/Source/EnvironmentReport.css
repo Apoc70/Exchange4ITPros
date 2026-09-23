@@ -51,7 +51,7 @@ table.header {
   border: 0px;
   padding: 3px;
   font-size: 11px;
-  width: 100%;
+  width: auto;
 }
 table tr.header {
   background: #dfe7ee;
