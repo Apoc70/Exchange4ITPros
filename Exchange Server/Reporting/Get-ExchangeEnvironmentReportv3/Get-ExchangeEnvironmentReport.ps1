@@ -6,7 +6,7 @@ Exchange Environment Report
 Script Version  : 3.0.1
 Mapping Version : 2026.09.1
 Mapping Updated : 2026-09-18
-Build Date : 2026-09-22 10:50:59
+Build Date : 2026-09-23 12:34:55
 
 Do not edit manually.
 Edit the files in the Source folder instead.
@@ -276,7 +276,7 @@ table.header {
   border: 0px;
   padding: 3px;
   font-size: 11px;
-  width: 100%;
+  width: auto;
 }
 table tr.header {
   background: #dfe7ee;
