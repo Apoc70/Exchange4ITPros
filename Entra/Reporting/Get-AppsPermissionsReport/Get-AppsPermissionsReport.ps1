@@ -9,7 +9,7 @@
     Generates an HTML report and a CSV report stored in a "Reports" subfolder.
     Apps containing EWS (Exchange Web Services) permissions are flagged in a configurable color.
     Delivery options: local filesystem, email, or Microsoft Teams channel webhook.
-    Current version: 2.1.3.
+    Current version: 2.1.4.
 
 .PARAMETER PredefinedSets
     Specify predefined permission sets to include: "Exchange", "SharePoint", or both.
@@ -107,6 +107,7 @@
 
 .NOTES
     Revision history:
+      2.1.4 - Added a copy-and-paste Set-OrganizationConfig command for EWS-enabled app IDs in the required format.
       2.1.3 - Added JSON configuration file support for certificate authentication.
       2.1.2 - Added EWS-only reporting and console output of EWS-enabled app IDs.
       2.1.1 - Added report variants, app-only authentication, and permission highlighting.
@@ -162,7 +163,7 @@ param (
     [switch]$OutputEwsAppIds
 )
 
-$ScriptVersion = "2.1.3"
+$ScriptVersion = "2.1.4"
 $scriptTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
 function Write-ActivityStatus {
@@ -694,6 +695,13 @@ if ($OutputEwsAppIds) {
     $ewsAppIds = @($reportData | Where-Object HasEWS | Select-Object -ExpandProperty AppId -Unique | Sort-Object)
     Write-ActivityStatus "EWS-enabled app IDs:"
     $ewsAppIds | ForEach-Object { Write-Output $_ }
+
+    if ($ewsAppIds.Count -gt 0) {
+        Write-Output ""
+        $quotedEwsAppIds = '"{0}"' -f (($ewsAppIds | ForEach-Object { $_ }) -join ',')
+        Write-Output "Set-OrganizationConfig -EwsAllowedAppIDs $quotedEwsAppIds"
+        Write-Output ""
+    }
 }
 
 #endregion
