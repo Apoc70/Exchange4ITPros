@@ -38,7 +38,7 @@ param (
     [switch]$Highlight3rdPartyOwners,
     [switch]$ExportCSV,
     [Parameter(Mandatory, ParameterSetName = 'Config')]     
-    [string]$ConfigFile = 'dev-egxde.json',
+    [string]$ConfigFile = 'config.json',
     [switch]$DailyReport,
     [int]$ExpireInDays = 30
 )
