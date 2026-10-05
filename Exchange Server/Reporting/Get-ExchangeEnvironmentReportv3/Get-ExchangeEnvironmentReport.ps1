@@ -4,9 +4,9 @@
 Exchange Environment Report
 
 Script Version  : 3.0.1
-Mapping Version : 2026.09.1
-Mapping Updated : 2026-09-18
-Build Date : 2026-09-23 12:34:55
+Mapping Version : 2026.10.1
+Mapping Updated : 2026-10-05
+Build Date : 2026-10-05 08:19:43
 
 Do not edit manually.
 Edit the files in the Source folder instead.
@@ -463,8 +463,8 @@ table tr.databases {
 $EmbeddedVersionMappingJson = @'
 {
   "SchemaVersion": "1.0",
-  "MappingVersion": "2026.09.1",
-  "LastUpdated": "2026-09-18",
+  "MappingVersion": "2026.10.1",
+  "LastUpdated": "2026-10-05",
   "MajorVersions": {
     "6.0": { "Long": "Exchange 2000", "Short": "E2000" },
     "6.5": { "Long": "Exchange 2003", "Short": "E2003" },
@@ -486,6 +486,7 @@ $EmbeddedVersionMappingJson = @'
   },
   "MaxCumulativeUpdate": 40,
   "SecurityUpdates": {
+    "15.2.2562.53": "Sep26SUv2",
     "15.2.2562.49": "Sep26SU",
     "15.2.2562.46": "Aug26SU",
     "15.2.2562.45": "Jul26SU",
@@ -497,6 +498,7 @@ $EmbeddedVersionMappingJson = @'
     "15.2.2562.27": "Sep25HU",
     "15.2.2562.20": "Aug25SU",
 
+    "15.2.1748.53": "Sep26SUv2",
     "15.2.1748.51": "Sep26SU",
     "15.2.1748.49": "Aug26SU",
     "15.2.1748.48": "Jul26SU",
@@ -509,6 +511,7 @@ $EmbeddedVersionMappingJson = @'
     "15.2.1748.26": "May25HU",
     "15.2.1748.24": "Apr25HU",
 
+    "15.2.1544.48": "Sep26SUv2",
     "15.2.1544.46": "Sep26SU",
     "15.2.1544.44": "Aug26SU",
     "15.2.1544.43": "Jul26SU",
@@ -546,6 +549,7 @@ $EmbeddedVersionMappingJson = @'
     "15.2.1118.12": "Aug22SU",
     "15.2.1118.9": "Mar22SU",
 
+    "15.1.2507.75": "Sep26SUv2",
     "15.1.2507.73": "Sep26SU",
     "15.1.2507.72": "Aug26SU",
     "15.1.2507.71": "Jul26SU",
