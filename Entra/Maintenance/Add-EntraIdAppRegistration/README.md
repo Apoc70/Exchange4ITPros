@@ -28,7 +28,7 @@ Install-Module Microsoft.Graph -Scope AllUsers
 7. Applies the configured API permissions and the public client redirect URI.
 8. Optionally grants tenant-wide admin consent.
 9. Appends the successful registration to a documentation log.
-10. Displays the application ID and, when created, the client secret.
+10. Displays the tenant ID before the application ID and, when created, the client secret.
 
 The script does not overwrite an existing app registration with the same display name.
 
@@ -133,7 +133,7 @@ The script uses each permission `id` and `type` when configuring the app. `Role`
 
 The generated client secret is displayed only once by Microsoft Graph. Store it immediately in a secure secret store and never commit it, tenant-specific configuration, or credentials to source control.
 
-The script prints the new **Client ID (App ID)** and the client secret value when applicable. The application object ID is not printed as a configuration value; it is used internally while the script runs.
+The script prints the connected tenant's **Tenant ID** before the new **Client ID (App ID)**, even when `-TenantId` is omitted. It also prints the client secret value when applicable. The application object ID is not printed as a configuration value; it is used internally while the script runs.
 
 ## Related files
 

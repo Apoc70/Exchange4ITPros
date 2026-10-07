@@ -7,7 +7,7 @@
     THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE
     RISK OF THE USE OR THE RESULTS FROM THE USE OF THIS CODE REMAINS WITH THE USER.
 
-    Version 1.7, 2026-09-17
+    Version 1.8, 2026-10-07
 
     Based on the work of Andres Bohren
     https://blog.icewolf.ch/archive/2022/12/02/create-azure-ad-app-registration-with-microsoft-graph-powershell
@@ -27,6 +27,7 @@
     1.5     Parameter GrantAdminConsent added
     1.6     Parameter TenantId added, check for existing app registration added
     1.7     Logging for successfully added app registrations added
+    1.8     Tenant ID displayed before the client ID after app registration creation
 
     .PARAMETER TenantId
 
@@ -194,7 +195,7 @@ Connect-MgGraph @connectParams
 
 # Get tenant information for the registration log before making tenant changes
 try {
-    $organizationResponse = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization?$select=displayName,verifiedDomains' -ErrorAction Stop
+    $organizationResponse = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization?$select=id,displayName,verifiedDomains' -ErrorAction Stop
     $organization = @($organizationResponse.value)[0]
     $defaultDomain = @($organization.verifiedDomains | Where-Object { $_.isDefault })[0].name
 
@@ -299,7 +300,8 @@ $params = @{
 # Add permissions to the application
 $null = Update-MgApplication -ApplicationId $appObjectId -BodyParameter $params
 
-# Return the application ID for the settings file
+# Return the tenant and application IDs for the settings file
+Write-Host ('TenantId: {0}' -f $organization.id) -ForegroundColor Green
 Write-Host ('ClientId (App ID): {0}' -f $newApp.AppId) -ForegroundColor Green
 
 # Set the application as a public client with a redirect URI
