@@ -195,7 +195,7 @@ $PredefinedPermissionSets = @{
         # EAS
         "EAS.AccessAsUser.All",
         # Exchange Admin
-        "Exchange.ManageAsApp"
+        "Exchange.ManageAsApp", "Exchange.ManageAsAppV2", "Exchange.ManageV2"
     )
     SharePoint = @(
         "Sites.Read.All", "Sites.ReadWrite.All", "Sites.Manage.All", "Sites.FullControl.All",
