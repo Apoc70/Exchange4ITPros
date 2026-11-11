@@ -4,9 +4,9 @@
 Exchange Environment Report
 
 Script Version  : 3.0.1
-Mapping Version : 2026.10.2
-Mapping Updated : 2026-10-14
-Build Date : 2026-10-14 09:20:54
+Mapping Version : 2026.11.1
+Mapping Updated : 2026-11-11
+Build Date : 2026-11-11 11:10:54
 
 Do not edit manually.
 Edit the files in the Source folder instead.
@@ -463,8 +463,8 @@ table tr.databases {
 $EmbeddedVersionMappingJson = @'
 {
   "SchemaVersion": "1.0",
-  "MappingVersion": "2026.10.2",
-  "LastUpdated": "2026-10-14",
+  "MappingVersion": "2026.11.1",
+  "LastUpdated": "2026-11-11",
   "MajorVersions": {
     "6.0": { "Long": "Exchange 2000", "Short": "E2000" },
     "6.5": { "Long": "Exchange 2003", "Short": "E2003" },
@@ -486,6 +486,7 @@ $EmbeddedVersionMappingJson = @'
   },
   "MaxCumulativeUpdate": 40,
   "SecurityUpdates": {
+    "15.2.2562.57": "Nov26SU",
     "15.2.2562.56": "Oct26SU",
     "15.2.2562.53": "Sep26SUv2",
     "15.2.2562.49": "Sep26SU",
