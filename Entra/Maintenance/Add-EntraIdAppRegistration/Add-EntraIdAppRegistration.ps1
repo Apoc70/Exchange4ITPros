@@ -7,7 +7,7 @@
     THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE
     RISK OF THE USE OR THE RESULTS FROM THE USE OF THIS CODE REMAINS WITH THE USER.
 
-    Version 1.8, 2026-10-07
+    Version 1.9, 2026-11-12
 
     Based on the work of Andres Bohren
     https://blog.icewolf.ch/archive/2022/12/02/create-azure-ad-app-registration-with-microsoft-graph-powershell
@@ -28,6 +28,7 @@
     1.6     Parameter TenantId added, check for existing app registration added
     1.7     Logging for successfully added app registrations added
     1.8     Tenant ID displayed before the client ID after app registration creation
+    1.9     Optional public certificate upload with a configurable display name added
 
     .PARAMETER TenantId
 
@@ -55,7 +56,17 @@
 
     .PARAMETER UseCertificate
 
-    Switch to skip the creation of a client secret. The certificate must be uploaded manually after the application has been created.
+    Switch to skip the creation of a client secret. Without AppCertificatePath, upload the certificate manually after creation.
+
+    .PARAMETER AppCertificatePath
+
+    Optional path to a public certificate (.cer) to upload to the new application.
+    Providing this path also skips client-secret creation, even without UseCertificate.
+
+    .PARAMETER AppCertificateDisplayName
+
+    Display name of the uploaded certificate. Defaults to the certificate filename without its extension.
+    Requires AppCertificatePath.
 
     .PARAMETER AppLogoPath
 
@@ -103,11 +114,53 @@ param(
     [switch]$PrivateBrowserSession,
     [string]$PermissionsConfigPath = (Join-Path -Path $PSScriptRoot -ChildPath 'AppPermissions.json'),
     [switch]$GrantAdminConsent,
-    [string]$RegistrationLogPath = (Join-Path -Path $PSScriptRoot -ChildPath 'AppRegistrationLog.csv')
+    [string]$RegistrationLogPath = (Join-Path -Path $PSScriptRoot -ChildPath 'AppRegistrationLog.csv'),
+    [string]$AppCertificatePath,
+    [string]$AppCertificateDisplayName
 )
 
 # Maximum application logo file size accepted by Entra ID
 $script:MaxAppLogoSizeInBytes = 256KB
+
+$certificateCredential = $null
+
+if (-not [string]::IsNullOrWhiteSpace($AppCertificatePath)) {
+    $certificate = $null
+
+    try {
+        $certificateFile = Get-Item -LiteralPath $AppCertificatePath -ErrorAction Stop
+
+        if ($certificateFile.PSIsContainer -or $certificateFile.Extension -ne '.cer') {
+            throw 'The certificate path must point to a .cer file.'
+        }
+
+        $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certificateFile.FullName)
+
+        if ([string]::IsNullOrWhiteSpace($AppCertificateDisplayName)) {
+            $AppCertificateDisplayName = $certificateFile.BaseName
+        }
+
+        $certificateCredential = @{
+            Type          = 'AsymmetricX509Cert'
+            Usage         = 'Verify'
+            Key           = $certificate.RawData
+            DisplayName   = $AppCertificateDisplayName
+            StartDateTime = $certificate.NotBefore.ToUniversalTime()
+            EndDateTime   = $certificate.NotAfter.ToUniversalTime()
+        }
+    }
+    catch {
+        throw ('Unable to load the application certificate from {0}: {1}' -f $AppCertificatePath, $_.Exception.Message)
+    }
+    finally {
+        if ($null -ne $certificate) {
+            $certificate.Dispose()
+        }
+    }
+}
+elseif (-not [string]::IsNullOrWhiteSpace($AppCertificateDisplayName)) {
+    throw 'AppCertificateDisplayName requires AppCertificatePath.'
+}
 
 # Load the required API permissions before any changes are made in the tenant
 if (-not (Test-Path -LiteralPath $PermissionsConfigPath -PathType Leaf)) {
@@ -276,7 +329,16 @@ if (-not [string]::IsNullOrWhiteSpace($AppLogoPath)) {
     }
 }
 
-if ($UseCertificate) {
+if ($null -ne $certificateCredential) {
+    try {
+        $null = Update-MgApplication -ApplicationId $appObjectId -BodyParameter @{ KeyCredentials = @($certificateCredential) } -ErrorAction Stop
+        Write-Host ('Certificate "{0}" uploaded from {1}. No client secret has been created.' -f $AppCertificateDisplayName, $certificateFile.FullName) -ForegroundColor Green
+    }
+    catch {
+        throw ('Failed to upload the certificate to application "{0}" (AppId: {1}). The application has been created without a client secret: {2}' -f $AppName, $newApp.AppId, $_.Exception.Message)
+    }
+}
+elseif ($UseCertificate) {
     Write-Host 'No client secret has been created, as certificate-based authentication was selected.' -ForegroundColor Yellow
     Write-Host ('Upload your public certificate (.cer) manually to the app registration "{0}" in the Entra portal:' -f $AppName) -ForegroundColor Yellow
     Write-Host ('https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials/appId/{0}' -f $newApp.AppId) -ForegroundColor Yellow
