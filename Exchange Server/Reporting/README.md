@@ -8,6 +8,7 @@ This repository section contains reporting scripts for Microsoft Exchange Server
 |---|---|---|---|
 | [Get-EmailDnsHealthReport](Get-EmailDnsHealthReport/README.md) | Checks email DNS records for configured domains and reports health changes in CSV and HTML formats | DnsClient, PowerShell | PowerShell 5.1 or 7 on Windows |
 | [Get-ExchangeEnvironmentReportv3](Get-ExchangeEnvironmentReportv3/README.md) | Generates a self-contained HTML overview of an Exchange environment | EMS | Exchange Server 2010 |
+| [Get-OwaUsageFromIisLogs](Get-OwaUsageFromIisLogs/README.md) | Analyzes Exchange Front End IIS logs and reports OWA usage by user and day | None | PowerShell 5.1 or 7 |
 
 ## Notes
 
